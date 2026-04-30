@@ -986,6 +986,146 @@ input, textarea {
 .mm-archive-actual { color: var(--accent); }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   CSAPAT-FUNKCIÓK (Hála / Hangulat / Ölelés / Gondolok / Híd)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.activity-title {
+  font-family: 'Yeseva One', serif;
+  font-size: 13.5px;
+  letter-spacing: -0.005em;
+  color: var(--accent);
+  margin: 4px 0 8px;
+}
+.activity-body {
+  font-family: 'Yeseva One', serif;
+  font-size: 16.5px;
+  line-height: 1.34;
+  letter-spacing: -0.005em;
+  margin-bottom: 12px;
+}
+.activity-status {
+  font-size: 11.5px;
+  color: var(--fg-soft);
+  margin-bottom: 12px;
+  letter-spacing: 0.02em;
+}
+.card-pick .activity-cta {
+  width: 100%;
+  padding: 11px;
+  font-size: 12.5px;
+}
+
+.mood-row {
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+  margin: 6px 0 12px;
+}
+.mood-btn {
+  flex: 1;
+  padding: 12px 0;
+  border-radius: 12px;
+  border: 0.5px solid var(--line);
+  background: transparent;
+  font-size: 22px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  line-height: 1;
+}
+.mood-btn:active { background: var(--accent-soft); }
+.mood-btn.is-picked { border-color: var(--accent); background: var(--accent-soft); }
+.mood-display {
+  display: flex;
+  gap: 18px;
+  margin: 8px 0 14px;
+  justify-content: center;
+}
+.mood-display-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.mood-display-emoji { font-size: 32px; line-height: 1; }
+.mood-display-label {
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-soft);
+}
+
+.hug-timer {
+  font-family: 'Yeseva One', serif;
+  font-size: 48px;
+  text-align: center;
+  margin: 10px 0;
+  color: var(--accent);
+  letter-spacing: -0.02em;
+}
+.hug-prompt {
+  text-align: center;
+  font-size: 13px;
+  color: var(--fg-soft);
+  font-style: italic;
+  margin-bottom: 10px;
+}
+
+.heart-btn {
+  width: 100%;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1.5px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-family: 'Manrope', sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: background 0.2s;
+}
+.heart-btn:active { background: var(--accent-soft); }
+.heart-btn.is-pulsing { animation: heart-pulse 0.6s ease-out; }
+@keyframes heart-pulse {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+.gondolok-counts {
+  display: flex;
+  gap: 18px;
+  margin: 10px 0 12px;
+  justify-content: center;
+  font-size: 11.5px;
+  color: var(--fg-soft);
+  letter-spacing: 0.02em;
+}
+.gondolok-count-num {
+  font-family: 'Yeseva One', serif;
+  font-size: 18px;
+  color: var(--accent);
+  margin-right: 4px;
+  letter-spacing: -0.005em;
+}
+
+.hala-text {
+  font-family: 'Yeseva One', serif;
+  font-style: italic;
+  font-size: 17px;
+  line-height: 1.4;
+  padding: 18px 20px;
+  border-radius: 14px;
+  background: var(--bg-card-tint);
+  border: 0.5px solid var(--accent-border);
+  margin: 12px 0 18px;
+  letter-spacing: -0.005em;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    7. SUTTOGÁS-szerkesztő (modal)
    ═══════════════════════════════════════════════════════════════════════ */
 

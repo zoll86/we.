@@ -2,160 +2,121 @@
 
 > Egy közös tér kettőtöknek.
 
-**Aktuális verzió:** v0.6 — Saját pool feltöltés (Beállításokban), kézzel állítható téma (világos / sötét / automatikus), kibővített Mit mondana pool (50 kérdés, mix játékos + komoly).
+**Aktuális verzió:** v0.7 — 5 új csapat-funkció a Mai választás keretbe (Hála-üzenet, Hangulat-megosztás, 20 másodperces ölelés, Rád gondolok, Híd-jelzés). Napi sorsolás 6 funkció között.
 
-## ⚙️ V0.6 frissítés (ha most v0.5-ről jössz)
+## ⚙️ V0.7 frissítés (ha most v0.6-ról jössz)
 
-### 1. SQL migráció — egy új mező a pairs táblába
+### 1. SQL migráció — egy új tábla
 
 Supabase → SQL Editor → New query:
 
 ```sql
-alter table pairs add column if not exists custom_pools jsonb default '{}'::jsonb;
-```
+create table if not exists team_activities (
+  id uuid primary key default gen_random_uuid(),
+  pair_id uuid references pairs(id) on delete cascade,
+  activity_type text not null,
+  date text not null,
+  state jsonb default '{}'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
 
-Ez minden — a custom_pools tárolja mindkettőtök közös pool-jait, és a meglévő realtime feliratkozás miatt automatikusan szinkronizálódik.
+create unique index if not exists team_activities_pair_date_type
+  on team_activities (pair_id, date, activity_type);
+
+alter publication supabase_realtime add table team_activities;
+
+alter table team_activities enable row level security;
+create policy "open read team activities" on team_activities for select using (true);
+create policy "open write team activities" on team_activities for insert with check (true);
+create policy "open update team activities" on team_activities for update using (true);
+create policy "open delete team activities" on team_activities for delete using (true);
+```
 
 ### 2. Fájlok cseréje a repo-ban
 
 Cserélendő:
-- `app.js`
-- `index.html`
-- `style.css`
-- `lib/sync.js`
-- `data/mitmondana.js` (kibővítve 30 → 50 kérdés)
-- `sw.js` (verzió bumpolva)
-- `supabase-schema.sql`
-- `README.md`
+- `app.js`, `index.html`, `style.css`, `lib/sync.js`, `sw.js`, `supabase-schema.sql`, `README.md`
 
-Új mappa: `pool-peldak/` — három példa-fájl, szabad mintaként.
-
-A `config.js`, `data/feladatok.js`, `data/kerdesek.js` változatlan.
+A `config.js`, `data/`, `pool-peldak/` változatlan.
 
 ```bash
 git add .
-git commit -m "we. v0.6 — saját pool feltöltés + téma-választó"
+git commit -m "we. v0.7 — 5 csapat-funkció + Mai választás random sorsolás"
 git push
 ```
 
-A localStorage kulcs verziót váltottam (`we-state-v5` → `we-state-v6`), tehát mindkét telefonon **újra kell párosítani** induláskor (vagy `__we.reset()`).
+A localStorage kulcs verziót váltottam (`we-state-v6` → `we-state-v7`), tehát mindkét telefonon **újra kell párosítani** induláskor (vagy `__we.reset()`).
 
-## Mi az új (v0.6)
+## Mi az új (v0.7)
 
-### Téma-választó a Beállításokban
-A telefon-rendszerbeállítás helyett most **kézzel** is állíthatjátok: automatikus / világos / sötét. A választás telefon-specifikus (mindkettőtöknél külön), és túléli az újratöltést.
+### Mai választás napi sorsolása
 
-### Mit mondana pool kibővítve 50-re
-30 + 20 új kérdés, sokkal több játékos / képzeletbeli kérdéssel:
-- *„Ha varázspálcád lenne 5 percig, mit csinálnál vele?"*
-- *„Egy tárgy nálunk otthon, ami szerinted titokban él?"*
-- *„Egy szín, amit a tehén után neveznél el?"*
-- *„Egy hely a Földön, ahol szerinted ufót láthatsz?"*
-- *„Egy varázsige, amit ráolvasnál rám reggel?"*
+A Mai választás kártya most **napi 1 véletlent sorsol** a 6 funkció közül:
+- Mit mondana a másik (a v0.5-ben épített kétlépcsős kérdésjáték)
+- Hála-üzenet
+- Hangulat-megosztás
+- 20 másodperces ölelés
+- Rád gondolok
+- Híd-jelzés
 
-### 🎉 Saját pool feltöltés (a nagy újdonság)
+A sorsolás **deterministic hash** a `pair_id + dátum`-ból — tehát mindkét telefon ugyanazt a funkciót látja az adott napon. Holnap új sorsolódik.
 
-A Beállításokban most három saját pool-szakasz van:
-1. **Mit mondana pool**
-2. **Mai feladat pool**
-3. **Mai kérdés pool**
+### Az 5 új funkció
 
-Mindhez tartozik:
-- **Feltöltés** gomb → válassz ki egy `.txt` fájlt
-- **Prompt másolása** gomb → másold ki a kész AI-promptot, és bárhol generáltathatod (ChatGPT / Gemini / Claude / Mistral / etc.)
-- **Visszaállítás** gomb (csak ha van saját pool) → visszadob az eredetire
+#### 🌸 Hála-üzenet
+„Egy konkrét dolog, amit ma a párodnál értékelsz."
+- Egyikőtök írja → a másik elolvashatja → kész
+- Hármas állapot: senki nem írt → írj; te írtál → várjuk hogy elolvassa; ő írt → olvass; mindkettő → megtörtént
 
-A feltöltött pool **mindkét telefonon ugyanaz** — a Supabase-en keresztül szinkronizálódik. Tehát ha te feltöltesz egy újat, a párodé is automatikusan átáll.
+#### 😊 Hangulat-megosztás
+5 emoji választás (😊 jól · 😐 közepes · 😔 nehéz · 😴 fáradt · 🌟 csillogós).
+- Mindketten választotok egyet → kártyán látszik mindkettőtöké
+- Aki elsőként választ, az „A-szlot"; a másik „B-szlot"
 
-A pool azonnal hatályba lép — a következő napi feladat / kérdés / mit mondana már a sajátodból sorsolódik.
+#### 🤗 20 másodperces ölelés
+- Egyikőtök megnyomja az „indítom" gombot → mindkét telefonon fut a 20→0 visszaszámláló
+- A másik telefonján toast: „öleljetek 20 mp-ig ❤"
+- Lejár → „megcsináltuk?" gomb → kész
 
-#### A workflow
+#### ❤ Rád gondolok
+- Egy szív gomb a kártyán
+- Tap → jelzés a párodnak (toast: „ő rád gondol ❤")
+- Bármikor, bárhányszor — a kártyán számláló: „ma 3-szor küldted, 2-szer kaptál"
 
-1. Beállításokban → tap a „prompt másolása"-ra a kívánt típusnál
-2. Megnyitsz egy AI-t (ChatGPT / Gemini / Claude / akármit), beillesztesz, küld
-3. Megkapod a 30-100 elemes pool-t a megfelelő formátumban
-4. Mented egy `.txt` fájlba (pl. „Mentés másként" → enter.txt)
-5. Vissza a Beállításokba → „feltöltés" → válaszd ki a fájlt
-6. Kész — a pool hatályba lép, és a párod telefonja is frissül
+#### 🌉 Híd-jelzés
+„Valamit szeretnék veled megbeszélni, de nehéz elindulnom."
+- Egyikőtök rányom a „beszélnünk kéne" gombra → a másik telefonján toast + kártya: „ő szeretne valamiről beszélni — készen állsz?"
+- A másik rányom a „hallgatlak" gombra → összekötve, élőben beszéltek
 
-#### A formátumok
+### Architektúra
 
-**Mit mondana** — legegyszerűbb. Egy kérdés / sor.
-```
-# we. mit mondana pool
-# Egy kérdés / sor.
+Egy közös tábla: `team_activities`. Minden aktivitás-példány:
+- `pair_id`, `activity_type`, `date` — egyedi kulcs (egy páros napi 1 példányt kap típusonként)
+- `state` (jsonb) — típus-specifikus adatok
 
-Mit kérnél most a hold-istennőtől?
-Ha most teleportálhatnál egy hétre, hova mennél?
-[stb.]
-```
+Ez azt is jelenti, hogy a táblába jövőben még több aktivitás-típus belefér séma-változás nélkül.
 
-**Mai feladat** — három részre osztva | jellel.
-```
-# we. mai feladat pool
-# Formátum: szöveg | időpont | költség
-# időpont: reggel | este | hazaerkezes | barmikor
-# költség: ingyenes | kicsi | kozepes
+## Mi szinkron
 
-Vegyél egy szál virágot hazafelé jövet | hazaerkezes | kicsi
-Mondj egy konkrét köszönöm-öt a párodnak | barmikor | ingyenes
-[stb.]
-```
+Mind az 5 funkció **valós időben** szinkron a két telefonon — bárki bármit változtat, a partneren is azonnal frissül. Toast-ekkel jelezzük a fontos eseményeket (új hála-üzenet, hangulat-választás, ölelés-indítás, szív-jelzés, híd-jelzés és válasz).
 
-**Mai kérdés** — három szint, [KONNYU] [KOZEPES] [MELY] szekciókkal.
-```
-# we. mai kérdés pool
-# Szintek: [KONNYU] / [KOZEPES] / [MELY]
+## Mi NINCS v0.7-ben
 
-[KONNYU]
-Mi volt ma a legjobb pillanatod?
-[stb.]
+- A csapat-funkciók nem archiválódnak külön Naplónk-fülbe (csak az aznapi kártyán élnek)
+- Mit mondana továbbra is a Naplónk → Kérdések fülre archiválódik (v0.5 óta)
+- A „Rád gondolok" napi limit nélküli — bárki bármikor küldhet többször
 
-[KOZEPES]
-Mit szerettél bennem amikor először találkoztunk?
-[stb.]
+## Mi jön (v0.8)
 
-[MELY]
-Mitől félsz leginkább velem kapcsolatban?
-[stb.]
-```
-
-A `pool-peldak/` mappában mindháromnak ott van a példája.
-
-#### Hibakezelés
-
-Ha a fájl rossz formátumú, az app egy érthető hibát ír ki (pl. *„hibás időpont »reggelente« — érvényes: reggel, este, hazaerkezes, barmikor"*). A pool nem cserélődik le, az eredeti marad.
-
-Ha a saját pool kifogy (pl. minden Mit mondana kérdést felfedtetek), az első kérdéssel kezdődik újra a sorsolás — ez azonos a default pool viselkedésével.
-
-## Mi szinkron a két telefon között
-
-| Funkció | Mit csinál |
-|---|---|
-| Párosítás, Csillám neve, szint-választás | UPDATE pairs |
-| Suttogás (gyűjtődik) | INSERT whispers |
-| Mai feladat teljesítése | INSERT feladat_log |
-| Mai kérdés megbeszélése | INSERT kerdesek |
-| Vágy hozzáadása / beteljesítése | INSERT/UPDATE vagyak |
-| Mit mondana session + válaszok | INSERT mit_mondana_sessions + responses |
-| Mit mondana felfedés | UPDATE mit_mondana_sessions |
-| **Saját pool feltöltés / visszaállítás** | UPDATE pairs.custom_pools |
-| Téma-választás | csak helyileg (telefon-specifikus) |
-
-## Mi jön (v0.7)
-
-A halasztott „nagy csomag": **5 új csapat-funkció** a Mai választás keretbe:
-- **Hála-üzenet** — egy köszönet, Csillám viszi át
-- **Hangulat-megosztás** — gyors emoji, mindkettő látja a másikét
-- **20 másodperces ölelés** — beépített számláló + „megcsináltuk"
-- **„Rád gondolok"** — egy szív-jelzés a párodnak, bármikor küldhető
-- **Híd-jelzés** — „valamit szeretnék megbeszélni — segítenél elindítani?"
-
-Mai választás napi sorsol egyet a 6 funkcióból (Mit mondana + 5 új).
+Esti rítusok + presence:
+- Közös meditáció (timer + soft bell + ki van fent jelzés)
+- Magányos pillanat alt-Mindennapok (ha csak egyikőtök van fent)
+- Élő status-dotok valós idejű presence-szel
+- Csillám éjjeli meditáció-javaslat interaktívvá
 
 ## Mi jön később
 
-- v0.8: Esti rítusok + presence (közös meditáció, magányos pillanat, élő status-dotok)
 - v0.9: Emlékek + idő-funkciók (Visszhang, Évforduló-szellem, Zenei időkapszula, Színes nap, Párhuzamos pillanat)
 - v0.10: Polish + Auth + szigorúbb RLS
 - v1.0+: Mélyvíz mód

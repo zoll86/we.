@@ -139,6 +139,32 @@ create policy "open write mm responses" on mit_mondana_responses for insert with
 create policy "open update mm responses" on mit_mondana_responses for update using (true);
 create policy "open delete mm responses" on mit_mondana_responses for delete using (true);
 
+-- ════════════════════════════════════════════════════════════════════
+-- v0.7 — Csapat-funkciók (Hála / Hangulat / Ölelés / Rád gondolok / Híd)
+-- ════════════════════════════════════════════════════════════════════
+
+create table if not exists team_activities (
+  id uuid primary key default gen_random_uuid(),
+  pair_id uuid references pairs(id) on delete cascade,
+  activity_type text not null,
+  date text not null,
+  state jsonb default '{}'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Egy páros napi 1 aktivitás-példányt kap aktivitás-típusonként
+create unique index if not exists team_activities_pair_date_type
+  on team_activities (pair_id, date, activity_type);
+
+alter publication supabase_realtime add table team_activities;
+
+alter table team_activities enable row level security;
+create policy "open read team activities" on team_activities for select using (true);
+create policy "open write team activities" on team_activities for insert with check (true);
+create policy "open update team activities" on team_activities for update using (true);
+create policy "open delete team activities" on team_activities for delete using (true);
+
 -- ─── Row Level Security ────────────────────────────────────────────────
 
 -- Egyelőre nyilvános (tesztidő alatt). v0.3-ban: párkód-alapú szigorítás.

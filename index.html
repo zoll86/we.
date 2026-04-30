@@ -211,18 +211,10 @@
         </div>
       </div>
 
-      <!-- Mai választás (csapat) -->
-      <div class="card card-pick" data-pick-card hidden>
-        <div class="card-label">Mai választás · csapat</div>
-        <div class="pick-title">Mit mondana a másik?</div>
-        <div class="pick-question" data-pick-question></div>
-        <div class="pick-status" data-pick-status></div>
-        <button class="btn-primary" data-action="open-mitmondana" data-pick-cta>megnyitom →</button>
-      </div>
-      <div class="card card-pick-done" data-pick-done hidden>
-        <div class="card-label">Mai választás · megbeszéltétek ✓</div>
-        <div class="pick-done-text" data-pick-done-text></div>
-        <div class="question-done-meta">holnap új jön</div>
+      <!-- Mai választás (csapat-funkció) — dinamikus tartalom -->
+      <div class="card card-pick" data-pick-card>
+        <div class="card-label" data-pick-label>Mai választás · csapat</div>
+        <div data-pick-body></div>
       </div>
 
       <!-- Mai feladat -->
@@ -433,6 +425,42 @@
       <div class="mm-note-saved" data-mm-note-saved hidden>
         <div class="mm-note-saved-text" data-mm-saved-note-text></div>
       </div>
+    </div>
+  </section>
+</template>
+
+<!-- 14. HÁLA-üzenet · írás -->
+<template id="screen-hala-compose">
+  <section class="screen screen-modal">
+    <header class="modal-header">
+      <button class="back-btn" data-action="back" aria-label="vissza">
+        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <h3 class="modal-title">hála-üzenet</h3>
+      <span></span>
+    </header>
+    <div class="modal-body">
+      <p class="modal-hint">egy konkrét dolog, amit ma a párodnál értékelsz</p>
+      <textarea class="note-input" data-hala-input maxlength="280" placeholder="..."></textarea>
+      <button class="btn-primary" data-action="send-hala">Elküldöm</button>
+    </div>
+  </section>
+</template>
+
+<!-- 15. HÁLA-üzenet · olvasás -->
+<template id="screen-hala-view">
+  <section class="screen screen-modal">
+    <header class="modal-header">
+      <button class="back-btn" data-action="back" aria-label="vissza">
+        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <h3 class="modal-title">hála-üzenet</h3>
+      <span></span>
+    </header>
+    <div class="modal-body">
+      <p class="modal-hint">a párod köszönete neked:</p>
+      <div class="hala-text" data-hala-text></div>
+      <button class="btn-primary" data-action="ack-hala">Olvasod ❤</button>
     </div>
   </section>
 </template>

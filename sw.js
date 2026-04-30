@@ -1,7 +1,7 @@
 // we. — service worker
 // alap offline cache, PWA telepíthetőséghez
 
-const CACHE = 'we-v0-6';
+const CACHE = 'we-v0-7';
 const ASSETS = [
   './',
   './index.html',
