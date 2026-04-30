@@ -1372,9 +1372,6 @@ const screenBindings = {
       renderMeditationIntro();
     }
   },
-    const textEl = app.querySelector('[data-hala-text]');
-    if (textEl) textEl.textContent = s.text || '';
-  },
 
   journal() {
     currentTab = 'feladatok';
