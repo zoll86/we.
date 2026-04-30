@@ -16,8 +16,22 @@ create table if not exists pairs (
   created_at timestamptz default now(),
   -- a két fél azonosítója (kliens-oldali random ID, nem auth user)
   member_a text not null,
-  member_b text
+  member_b text,
+  -- v0.3: közös szint-választás a Mai kérdéshez
+  preferred_level text default 'kozepes' check (preferred_level in ('konnyu', 'kozepes', 'mely'))
 );
+
+-- Idempotens migrate: ha már létezik a tábla, csak hozzáadjuk a mezőt
+alter table pairs add column if not exists preferred_level text default 'kozepes';
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'pairs_preferred_level_check') then
+    alter table pairs add constraint pairs_preferred_level_check
+      check (preferred_level in ('konnyu', 'kozepes', 'mely'));
+  end if;
+end $$;
+
+-- v0.6: saját pool-ok (mind a két telefonon ugyanazok)
+alter table pairs add column if not exists custom_pools jsonb default '{}'::jsonb;
 
 -- Suttogások (csak az aktuális — egyszerre egy él)
 create table if not exists whispers (
@@ -55,10 +69,16 @@ create table if not exists kerdesek (
   id uuid primary key default gen_random_uuid(),
   pair_id uuid references pairs(id) on delete cascade,
   question text not null,
+  question_id text,                  -- pl. "konnyu_3" — pool-azonosító
   level text check (level in ('konnyu', 'kozepes', 'mely')),
   note text,
+  discussed_by text,                 -- aki rányomta a "megbeszéltük" gombot
   discussed_at timestamptz default now()
 );
+
+-- Idempotens migrate v0.2 → v0.3
+alter table kerdesek add column if not exists question_id text;
+alter table kerdesek add column if not exists discussed_by text;
 
 -- ─── Realtime engedélyezés ─────────────────────────────────────────────
 
@@ -68,6 +88,56 @@ alter publication supabase_realtime add table pairs;
 alter publication supabase_realtime add table whispers;
 alter publication supabase_realtime add table feladat_log;
 alter publication supabase_realtime add table vagyak;
+alter publication supabase_realtime add table kerdesek;
+
+-- ════════════════════════════════════════════════════════════════════
+-- v0.5 — „Mit mondana a másik" táblák
+-- ════════════════════════════════════════════════════════════════════
+
+create table if not exists mit_mondana_sessions (
+  id uuid primary key default gen_random_uuid(),
+  pair_id uuid references pairs(id) on delete cascade,
+  question_id text,
+  question text,
+  date text,
+  created_at timestamptz default now(),
+  initiator_id text,
+  revealed_at timestamptz,
+  note text
+);
+
+-- egy páros napi 1 session-t kap maximum (race-védelem)
+create unique index if not exists mit_mondana_sessions_pair_date
+  on mit_mondana_sessions (pair_id, date);
+
+create table if not exists mit_mondana_responses (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid references mit_mondana_sessions(id) on delete cascade,
+  member_id text not null,
+  guess text,
+  actual text,
+  completed_at timestamptz default now()
+);
+
+-- egy session alá member_id-nként 1 válasz
+create unique index if not exists mit_mondana_responses_session_member
+  on mit_mondana_responses (session_id, member_id);
+
+-- realtime
+alter publication supabase_realtime add table mit_mondana_sessions;
+alter publication supabase_realtime add table mit_mondana_responses;
+
+-- nyitott RLS (a többi táblához hasonlóan)
+alter table mit_mondana_sessions enable row level security;
+alter table mit_mondana_responses enable row level security;
+create policy "open read mm sessions" on mit_mondana_sessions for select using (true);
+create policy "open write mm sessions" on mit_mondana_sessions for insert with check (true);
+create policy "open update mm sessions" on mit_mondana_sessions for update using (true);
+create policy "open delete mm sessions" on mit_mondana_sessions for delete using (true);
+create policy "open read mm responses" on mit_mondana_responses for select using (true);
+create policy "open write mm responses" on mit_mondana_responses for insert with check (true);
+create policy "open update mm responses" on mit_mondana_responses for update using (true);
+create policy "open delete mm responses" on mit_mondana_responses for delete using (true);
 
 -- ─── Row Level Security ────────────────────────────────────────────────
 
@@ -96,5 +166,7 @@ create policy "open update vagyak" on vagyak for update using (true);
 
 create policy "open read kerdesek" on kerdesek for select using (true);
 create policy "open write kerdesek" on kerdesek for insert with check (true);
+create policy "open update kerdesek" on kerdesek for update using (true);
+create policy "open delete kerdesek" on kerdesek for delete using (true);
 
 -- FONTOS: ezt v0.3-ban szigorítsuk, ha publikussá tesszük

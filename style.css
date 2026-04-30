@@ -44,6 +44,44 @@
   }
 }
 
+/* Manuális téma-felülírás a beállításokból (auto = data-theme attribute hiányzik) */
+:root[data-theme="light"] {
+  --bg: #FAF7F2;
+  --bg-card: #FFFFFF;
+  --bg-card-tint: #FFF8F2;
+  --fg: #1A1714;
+  --fg-soft: #74695D;
+  --fg-softer: #8C8278;
+  --accent: #BB593E;
+  --accent-soft: rgba(187, 89, 62, 0.16);
+  --accent-border: rgba(187, 89, 62, 0.2);
+  --line: rgba(0, 0, 0, 0.08);
+  --line-soft: rgba(127, 127, 127, 0.13);
+  --btn-primary-bg: #1A1714;
+  --btn-primary-fg: #FAF7F2;
+  --btn-ghost-border: rgba(0, 0, 0, 0.18);
+  --pici-body: #BB593E;
+  --pici-tip: #F5A524;
+}
+:root[data-theme="dark"] {
+  --bg: #281C14;
+  --bg-card: #382517;
+  --bg-card-tint: #2F2117;
+  --fg: #F5EFE6;
+  --fg-soft: #A39689;
+  --fg-softer: #968A7E;
+  --accent: #D4A957;
+  --accent-soft: rgba(212, 169, 87, 0.12);
+  --accent-border: rgba(212, 169, 87, 0.30);
+  --line: rgba(255, 255, 255, 0.06);
+  --line-soft: rgba(127, 127, 127, 0.13);
+  --btn-primary-bg: #F5EFE6;
+  --btn-primary-fg: #1A1714;
+  --btn-ghost-border: rgba(255, 255, 255, 0.18);
+  --pici-body: #D17555;
+  --pici-tip: #F5C25A;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body { height: 100%; }
@@ -541,8 +579,8 @@ input, textarea {
 }
 .whisper-display {
   font-style: italic;
-  font-size: 13px;
-  line-height: 1.4;
+  font-size: 16px;
+  line-height: 1.42;
   color: var(--fg-softer);
 }
 .whisper-from {
@@ -553,6 +591,8 @@ input, textarea {
   opacity: 0.65;
   margin-right: 6px;
   color: var(--accent);
+  display: inline-block;
+  vertical-align: 2px;
 }
 .whisper-compose-btn {
   align-self: flex-start;
@@ -684,6 +724,267 @@ input, textarea {
   text-decoration: line-through;
 }
 
+/* Mai kérdés kártya */
+.card-question {
+  background: var(--bg-card-tint);
+  border-color: var(--accent-border);
+}
+.question-text {
+  font-family: 'Yeseva One', serif;
+  font-size: 17px;
+  line-height: 1.34;
+  margin: 6px 0 12px;
+  letter-spacing: -0.005em;
+}
+.level-row {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 11px;
+}
+.pill {
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 0.5px solid var(--line);
+  background: transparent;
+  color: var(--fg-soft);
+  text-transform: lowercase;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.pill.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.card-question .btn-primary {
+  width: 100%;
+  padding: 11px;
+  font-size: 12.5px;
+}
+.card-question-done {
+  background: transparent;
+  border: 0.5px dashed var(--line);
+  text-align: center;
+  padding: 16px;
+}
+.question-done-text {
+  font-family: 'Yeseva One', serif;
+  font-size: 14px;
+  line-height: 1.3;
+  opacity: 0.6;
+  margin: 6px 0;
+  font-style: italic;
+}
+.question-done-meta {
+  font-size: 10.5px;
+  color: var(--fg-soft);
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MAI VÁLASZTÁS (csapat-funkció keret)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.card-pick {
+  background: var(--bg-card-tint);
+  border-color: var(--accent-border);
+}
+.pick-title {
+  font-family: 'Yeseva One', serif;
+  font-size: 13.5px;
+  letter-spacing: -0.005em;
+  color: var(--accent);
+  margin: 4px 0 8px;
+}
+.pick-question {
+  font-family: 'Yeseva One', serif;
+  font-size: 16.5px;
+  line-height: 1.34;
+  letter-spacing: -0.005em;
+  margin-bottom: 10px;
+}
+.pick-status {
+  font-size: 11.5px;
+  color: var(--fg-soft);
+  margin-bottom: 12px;
+  letter-spacing: 0.02em;
+}
+.pick-status:empty { display: none; }
+.card-pick .btn-primary {
+  width: 100%;
+  padding: 11px;
+  font-size: 12.5px;
+}
+.card-pick-done {
+  background: transparent;
+  border: 0.5px dashed var(--line);
+  text-align: center;
+  padding: 16px;
+}
+.pick-done-text {
+  font-family: 'Yeseva One', serif;
+  font-size: 14px;
+  line-height: 1.3;
+  opacity: 0.7;
+  margin: 6px 0;
+  font-style: italic;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MIT MONDANA modalok
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.mm-question {
+  font-family: 'Yeseva One', serif;
+  font-size: 18px;
+  line-height: 1.34;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  background: var(--bg-card-tint);
+  border: 0.5px solid var(--accent-border);
+  border-radius: 12px;
+  letter-spacing: -0.005em;
+}
+.mm-field { margin-bottom: 14px; }
+.mm-label {
+  display: block;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-soft);
+  margin-bottom: 7px;
+}
+.mm-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 0.5px solid var(--line);
+  background: transparent;
+  font-family: 'Yeseva One', serif;
+  font-size: 15px;
+  font-style: italic;
+  line-height: 1.4;
+  color: var(--fg);
+  resize: none;
+  min-height: 78px;
+  letter-spacing: -0.005em;
+}
+.mm-input:focus { border-color: var(--accent); }
+
+.mm-status-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 14px 0;
+  border-bottom: 0.5px solid var(--line-soft);
+}
+.mm-status-row:last-of-type { border-bottom: none; margin-bottom: 18px; }
+.mm-status-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  background: transparent;
+  flex-shrink: 0;
+}
+.mm-status-dot.is-done { background: var(--accent); }
+.mm-status-text {
+  font-family: 'Yeseva One', serif;
+  font-size: 14px;
+  letter-spacing: -0.005em;
+}
+
+.mm-reveal-block {
+  background: rgba(187, 89, 62, 0.04);
+  border: 0.5px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+.mm-reveal-label {
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-soft);
+  margin-bottom: 6px;
+}
+.mm-reveal-label-secondary {
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 12px 0 6px;
+}
+.mm-reveal-text {
+  font-family: 'Yeseva One', serif;
+  font-size: 15px;
+  font-style: italic;
+  line-height: 1.4;
+  letter-spacing: -0.005em;
+}
+.mm-reveal-actual { color: var(--accent); }
+
+.mm-note-section { margin-top: 16px; }
+.mm-note-saved {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 0.5px dashed var(--line);
+}
+.mm-note-saved-text {
+  font-family: 'Yeseva One', serif;
+  font-style: italic;
+  font-size: 14px;
+  line-height: 1.4;
+  letter-spacing: -0.005em;
+}
+
+/* Mit mondana archív sor a Naplónk → Kérdések fülön */
+.mm-archive-row {
+  background: rgba(187, 89, 62, 0.03);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+.mm-badge {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: var(--accent);
+  color: #FFF;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+.mm-archive-mini {
+  margin-top: 9px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+}
+.mm-archive-pair {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12.5px;
+}
+.mm-archive-label {
+  font-size: 8.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-soft);
+}
+.mm-archive-text {
+  font-family: 'Yeseva One', serif;
+  font-style: italic;
+  font-size: 12.5px;
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+}
+.mm-archive-actual { color: var(--accent); }
+
 /* ═══════════════════════════════════════════════════════════════════════
    7. SUTTOGÁS-szerkesztő (modal)
    ═══════════════════════════════════════════════════════════════════════ */
@@ -732,6 +1033,44 @@ input, textarea {
   font-size: 11px;
   color: var(--fg-soft);
   margin: 8px 4px 16px;
+}
+
+/* Kérdés-jegyzet modal */
+.discussed-question {
+  font-family: 'Yeseva One', serif;
+  font-size: 17px;
+  line-height: 1.34;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  background: var(--bg-card-tint);
+  border: 0.5px solid var(--accent-border);
+  border-radius: 12px;
+  letter-spacing: -0.005em;
+}
+.note-input {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 0.5px solid var(--line);
+  background: transparent;
+  font-family: 'Yeseva One', serif;
+  font-size: 15px;
+  font-style: italic;
+  line-height: 1.4;
+  color: var(--fg);
+  resize: none;
+  min-height: 100px;
+  letter-spacing: -0.005em;
+}
+.note-input:focus { border-color: var(--accent); }
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.modal-actions .btn-ghost,
+.modal-actions .btn-primary {
+  flex: 1;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -868,6 +1207,227 @@ input, textarea {
 }
 @media (prefers-color-scheme: dark) {
   .offline-banner { background: rgba(212, 169, 87, 0.92); color: #1A1714; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   VÁGYAK fül
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.wish-list { padding-bottom: 12px; }
+
+.wish-item {
+  display: flex;
+  gap: 11px;
+  padding: 13px 0;
+  border-bottom: 0.5px solid var(--line-soft);
+  align-items: flex-start;
+  cursor: pointer;
+}
+.wish-mark {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  flex-shrink: 0;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  transition: background 0.2s;
+}
+.wish-item.is-done .wish-mark {
+  background: var(--accent);
+}
+.wish-check {
+  color: #FFF;
+  font-size: 9px;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.wish-item.is-done .wish-check { opacity: 1; }
+
+.wish-content { flex: 1; min-width: 0; }
+.wish-title {
+  font-family: 'Yeseva One', serif;
+  font-size: 16px;
+  line-height: 1.3;
+  margin-bottom: 3px;
+  letter-spacing: -0.005em;
+}
+.wish-item.is-done .wish-title {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+.wish-meta {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--fg-soft);
+}
+.wish-note {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--fg-soft);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+.add-wish-btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 0.5px dashed var(--line);
+  background: transparent;
+  font-family: 'Manrope', sans-serif;
+  font-size: 12px;
+  color: var(--fg-soft);
+  letter-spacing: 0.04em;
+  margin-top: 16px;
+  cursor: pointer;
+}
+.add-wish-btn:active { border-color: var(--accent); color: var(--accent); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SUTTOGÁSOK archív
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.whisper-archive-row {
+  margin-bottom: 13px;
+  padding-bottom: 11px;
+  border-bottom: 0.5px solid var(--line-soft);
+}
+.whisper-archive-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.whisper-archive-text {
+  font-family: 'Yeseva One', serif;
+  font-size: 14.5px;
+  line-height: 1.4;
+  font-style: italic;
+  margin-bottom: 4px;
+  letter-spacing: -0.005em;
+}
+.whisper-archive-meta {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--fg-soft);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ÚJ VÁGY modal
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.wish-input {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 0.5px solid var(--line);
+  background: transparent;
+  font-family: 'Yeseva One', serif;
+  font-size: 17px;
+  line-height: 1.4;
+  color: var(--fg);
+  resize: none;
+  min-height: 90px;
+  letter-spacing: -0.005em;
+  margin-bottom: 12px;
+}
+.wish-input:focus { border-color: var(--accent); }
+
+.wish-note-input {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 0.5px solid var(--line);
+  background: transparent;
+  font-family: 'Manrope', sans-serif;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--fg);
+  margin-bottom: 14px;
+}
+.wish-note-input:focus { border-color: var(--accent); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   BEÁLLÍTÁSOK
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.screen-settings .modal-body { gap: 0; }
+
+.settings-section {
+  padding: 18px 0;
+  border-bottom: 0.5px solid var(--line-soft);
+}
+.settings-section:last-child { border-bottom: none; }
+
+.settings-label {
+  display: block;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-soft);
+  margin-bottom: 10px;
+}
+.settings-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 0.5px solid var(--line);
+  background: transparent;
+  font-family: 'Yeseva One', serif;
+  font-size: 17px;
+  letter-spacing: -0.005em;
+  color: var(--fg);
+  margin-bottom: 10px;
+}
+.settings-input:focus { border-color: var(--accent); }
+.settings-text {
+  font-family: 'Yeseva One', serif;
+  font-size: 16px;
+  letter-spacing: -0.005em;
+}
+.settings-hint {
+  font-size: 11px;
+  color: var(--fg-soft);
+  margin: 4px 0 10px;
+  font-style: italic;
+}
+.btn-danger {
+  border-color: rgba(187,89,62,0.35);
+  color: var(--accent);
+}
+
+/* Téma-választó pirulák */
+.theme-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.theme-row .pill { flex: 1; text-align: center; padding: 8px 0; }
+
+/* Pool feltöltés szekciók */
+.pool-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.pool-row .btn-ghost {
+  font-size: 11.5px;
+  padding: 8px 12px;
+  letter-spacing: 0.04em;
+}
+.pool-status {
+  font-size: 11.5px;
+  color: var(--fg-soft);
+  font-style: italic;
+  margin-top: 2px;
+}
+.pool-status.is-custom {
+  color: var(--accent);
+  font-style: normal;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

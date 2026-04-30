@@ -4,11 +4,13 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 import { feladatok } from './data/feladatok.js';
+import { kerdesek as kerdesPool } from './data/kerdesek.js';
+import { mitMondanaPool } from './data/mitmondana.js';
 import * as sync from './lib/sync.js';
 
 // ─── State ──────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'we-state-v2';
+const STORAGE_KEY = 'we-state-v6';
 
 const defaultState = {
   myMemberId: null,
@@ -24,6 +26,19 @@ const defaultState = {
   todayTask: null,
   todayTaskDoneAt: null,
   feladatLog: [],
+  preferredLevel: 'kozepes',
+  todayQuestionDoneAt: null,
+  todayQuestionDay: null,
+  todayQuestionText: null,
+  pendingArchiveQuestion: null,
+  kerdesArchive: [],
+  vagyak: [],
+  whisperArchive: [],
+  mmToday: null,
+  mmArchive: [],
+  // v0.6
+  themePref: 'auto',         // 'auto' | 'light' | 'dark'
+  customPools: {},           // { mitmondana: [...], feladatok: [...], kerdesek: { konnyu, kozepes, mely } }
   hasSeenArrival: false,
 };
 
@@ -63,6 +78,41 @@ function resetAll() {
   localStorage.removeItem(STORAGE_KEY);
   state = { ...defaultState };
   navigate('welcome');
+}
+
+// ─── Téma alkalmazása ──────────────────────────────────────────────────
+
+function applyTheme(pref) {
+  if (pref === 'auto' || !pref) {
+    document.documentElement.removeAttribute('data-theme');
+  } else {
+    document.documentElement.setAttribute('data-theme', pref);
+  }
+}
+
+// ─── Pool getter-ek (custom > default) ────────────────────────────────
+
+function getMitMondanaPool() {
+  const custom = state.customPools?.mitmondana;
+  if (Array.isArray(custom) && custom.length > 0) return custom;
+  return mitMondanaPool;
+}
+function getFeladatokPool() {
+  const custom = state.customPools?.feladatok;
+  if (Array.isArray(custom) && custom.length > 0) return custom;
+  return feladatok;
+}
+function getKerdesekPool() {
+  const custom = state.customPools?.kerdesek;
+  if (custom && (custom.konnyu?.length || custom.kozepes?.length || custom.mely?.length)) {
+    // egyesítjük a defaultokkal: ha valamelyik üres, default
+    return {
+      konnyu: custom.konnyu?.length ? custom.konnyu : kerdesPool.konnyu,
+      kozepes: custom.kozepes?.length ? custom.kozepes : kerdesPool.kozepes,
+      mely: custom.mely?.length ? custom.mely : kerdesPool.mely,
+    };
+  }
+  return kerdesPool;
 }
 
 // ─── Member ID ─────────────────────────────────────────────────────────
@@ -107,18 +157,44 @@ const syncCallbacks = {
         if (nameEl) nameEl.textContent = pair.pici_name;
       }
     }
+    // preferred_level frissült (a párod átváltotta)
+    if (pair.preferred_level && pair.preferred_level !== state.preferredLevel) {
+      setState({ preferredLevel: pair.preferred_level });
+      if (currentScreen === 'home') renderQuestionCard();
+    }
+    // v0.6: custom_pools frissült (a párod feltöltött vagy visszaállított pool-t)
+    if (pair.custom_pools && JSON.stringify(pair.custom_pools) !== JSON.stringify(state.customPools)) {
+      setState({ customPools: pair.custom_pools });
+      toast('pool frissítve a párodtól ✓');
+      if (currentScreen === 'home') {
+        renderQuestionCard();
+        renderPickCard();
+        renderTask();
+      }
+    }
   },
 
   onWhisper(whisper) {
     const isFromMe = whisper.from_member === state.myMemberId;
+    const archEntry = {
+      id: whisper.id,
+      text: whisper.text,
+      by: isFromMe ? 'self' : 'partner',
+      sentAt: new Date(whisper.sent_at).getTime(),
+    };
     setState({
       whisper: {
         text: whisper.text,
         from: isFromMe ? 'self' : 'partner',
-        sentAt: new Date(whisper.sent_at).getTime(),
+        sentAt: archEntry.sentAt,
       },
+      // hozzáadjuk az archívumhoz is (legelső, mert legfrissebb)
+      whisperArchive: [archEntry, ...state.whisperArchive.filter(w => w.id !== whisper.id)],
     });
     if (currentScreen === 'home') renderWhisper();
+    if (currentScreen === 'journal' && currentTab === 'suttogasok') {
+      renderJournalTab(currentTab);
+    }
     if (!isFromMe) toast('új suttogás ❤');
   },
 
@@ -139,13 +215,152 @@ const syncCallbacks = {
       });
       toast(`${state.piciName || 'a párod'}: csinált egyet ❤`);
     }
-    if (currentScreen === 'journal') renderJournalTab('feladatok');
+    if (currentScreen === 'journal') renderJournalTab(currentTab);
+  },
+
+  onKerdesArchived(entry) {
+    const isFromMe = entry.discussed_by === state.myMemberId;
+    setState({
+      kerdesArchive: [
+        ...state.kerdesArchive,
+        {
+          id: entry.id,
+          question: entry.question,
+          questionId: entry.question_id,
+          level: entry.level,
+          note: entry.note,
+          by: isFromMe ? 'self' : 'partner',
+          discussedAt: new Date(entry.discussed_at).getTime(),
+        },
+      ],
+      todayQuestionDoneAt: new Date(entry.discussed_at).getTime(),
+      todayQuestionDay: todayKey(),
+      todayQuestionText: entry.question,
+    });
+    if (currentScreen === 'home') renderQuestionCard();
+    if (currentScreen === 'journal') renderJournalTab(currentTab);
+    if (!isFromMe) {
+      toast('megbeszéltétek a mai kérdést ❤');
+    }
+  },
+
+  onVagyakChange(payload) {
+    const ev = payload.eventType;
+    if (ev === 'INSERT' && payload.new) {
+      const v = payload.new;
+      // ne adjuk hozzá kétszer (saját INSERT esetén már lokálisan be van rakva)
+      if (state.vagyak.some(x => x.id === v.id)) return;
+      setState({
+        vagyak: [{
+          id: v.id,
+          text: v.text,
+          note: v.note,
+          doneAt: v.done_at ? new Date(v.done_at).getTime() : null,
+          createdBy: v.created_by,
+          createdAt: new Date(v.created_at).getTime(),
+        }, ...state.vagyak],
+      });
+      if (v.created_by !== state.myMemberId) {
+        toast('új közös vágy ❤');
+      }
+    } else if (ev === 'UPDATE' && payload.new) {
+      const v = payload.new;
+      setState({
+        vagyak: state.vagyak.map(x => x.id === v.id ? {
+          ...x,
+          text: v.text,
+          note: v.note,
+          doneAt: v.done_at ? new Date(v.done_at).getTime() : null,
+        } : x),
+      });
+    } else if (ev === 'DELETE' && payload.old) {
+      setState({ vagyak: state.vagyak.filter(x => x.id !== payload.old.id) });
+    }
+    if (currentScreen === 'journal' && currentTab === 'vagyak') {
+      renderJournalTab(currentTab);
+    }
+  },
+
+  onMitMondanaSession(payload) {
+    const ev = payload.eventType;
+    if (ev === 'INSERT' && payload.new) {
+      const s = payload.new;
+      if (!state.mmToday && s.date === todayKey()) {
+        setState({ mmToday: hydrateMmSession(s, []) });
+        if (currentScreen === 'home') renderPickCard();
+      }
+    } else if (ev === 'UPDATE' && payload.new) {
+      const s = payload.new;
+      if (state.mmToday && state.mmToday.sessionId === s.id) {
+        setState({
+          mmToday: {
+            ...state.mmToday,
+            revealedAt: s.revealed_at ? new Date(s.revealed_at).getTime() : null,
+            note: s.note,
+          },
+        });
+        if (s.revealed_at) {
+          // ha a partner felfedte, archívba is rakjuk
+          if (!state.mmArchive.some(e => e.sessionId === s.id)) {
+            const archEntry = {
+              sessionId: s.id,
+              questionId: s.question_id,
+              question: s.question,
+              date: s.date,
+              revealedAt: new Date(s.revealed_at).getTime(),
+              note: s.note,
+              myGuess: state.mmToday.myResponse?.guess || '',
+              myActual: state.mmToday.myResponse?.actual || '',
+              partnerGuess: state.mmToday.partnerResponse?.guess || '',
+              partnerActual: state.mmToday.partnerResponse?.actual || '',
+            };
+            setState({ mmArchive: [archEntry, ...state.mmArchive] });
+          }
+          if (currentScreen === 'home') renderPickCard();
+          if (currentScreen === 'mm-status') {
+            navigate('mm-reveal');
+          } else if (currentScreen === 'mm-reveal') {
+            renderMmReveal();
+          }
+          if (currentScreen === 'journal' && currentTab === 'kerdesek') {
+            renderJournalTab('kerdesek');
+          }
+        }
+      }
+    }
+  },
+
+  onMitMondanaResponse(response) {
+    if (!state.mmToday || state.mmToday.sessionId !== response.session_id) return;
+    const isFromMe = response.member_id === state.myMemberId;
+    const respObj = {
+      guess: response.guess,
+      actual: response.actual,
+      completedAt: new Date(response.completed_at).getTime(),
+    };
+    setState({
+      mmToday: {
+        ...state.mmToday,
+        ...(isFromMe ? { myResponse: respObj } : { partnerResponse: respObj }),
+      },
+    });
+    if (!isFromMe && !state.partnerMemberId) {
+      setState({ partnerMemberId: response.member_id });
+    }
+    if (currentScreen === 'home') renderPickCard();
+    if (currentScreen === 'mm-status') renderMmStatus();
+    if (!isFromMe) {
+      toast(`${state.piciName || 'a párod'}: válaszolt ❤`);
+    }
   },
 };
 
 // ─── Inicializáció ─────────────────────────────────────────────────────
 
 async function init() {
+  // azonnal alkalmazzuk a téma-preferenciát (még a sync előtt)
+  applyTheme(state.themePref);
+
   if (sync.isConfigured()) {
     syncReady = await sync.connect();
     if (syncReady && state.pairId) {
@@ -166,8 +381,13 @@ async function init() {
 async function hydrateFromServer() {
   if (!state.pairId) return;
   const pair = await sync.loadPair(state.pairId);
-  if (pair && pair.pici_name) {
-    setState({ piciName: pair.pici_name });
+  if (pair) {
+    if (pair.pici_name) setState({ piciName: pair.pici_name });
+    if (pair.preferred_level) setState({ preferredLevel: pair.preferred_level });
+    if (pair.pici_born_at) setState({ piciBornAt: new Date(pair.pici_born_at).getTime() });
+    if (pair.custom_pools && typeof pair.custom_pools === 'object') {
+      setState({ customPools: pair.custom_pools });
+    }
   }
   const whisper = await sync.loadCurrentWhisper(state.pairId);
   if (whisper) {
@@ -181,6 +401,16 @@ async function hydrateFromServer() {
   } else {
     setState({ whisper: null });
   }
+  // teljes suttogás-archív
+  const allWhispers = await sync.loadAllWhispers(state.pairId);
+  setState({
+    whisperArchive: allWhispers.map(w => ({
+      id: w.id,
+      text: w.text,
+      by: w.from_member === state.myMemberId ? 'self' : 'partner',
+      sentAt: new Date(w.sent_at).getTime(),
+    })),
+  });
   const log = await sync.loadFeladatLog(state.pairId);
   setState({
     feladatLog: log.map(e => ({
@@ -191,6 +421,92 @@ async function hydrateFromServer() {
       note: e.note,
     })).reverse(),
   });
+  const archiv = await sync.loadKerdesek(state.pairId);
+  setState({
+    kerdesArchive: archiv.map(e => ({
+      id: e.id,
+      question: e.question,
+      questionId: e.question_id,
+      level: e.level,
+      note: e.note,
+      by: e.discussed_by === state.myMemberId ? 'self' : 'partner',
+      discussedAt: new Date(e.discussed_at).getTime(),
+    })).reverse(),
+  });
+  const today = todayKey();
+  const todayDiscussed = archiv.find(e => {
+    const d = new Date(e.discussed_at);
+    return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}` === today;
+  });
+  if (todayDiscussed) {
+    setState({
+      todayQuestionDoneAt: new Date(todayDiscussed.discussed_at).getTime(),
+      todayQuestionDay: today,
+      todayQuestionText: todayDiscussed.question,
+    });
+  } else {
+    setState({
+      todayQuestionDoneAt: null,
+      todayQuestionDay: null,
+      todayQuestionText: null,
+    });
+  }
+  // vágyak
+  const vagyak = await sync.loadVagyak(state.pairId);
+  setState({
+    vagyak: vagyak.map(v => ({
+      id: v.id,
+      text: v.text,
+      note: v.note,
+      doneAt: v.done_at ? new Date(v.done_at).getTime() : null,
+      createdBy: v.created_by,
+      createdAt: new Date(v.created_at).getTime(),
+    })),
+  });
+  // mit mondana — mai session + felfedett archív
+  const mmTodayData = await sync.loadTodayMitMondana(state.pairId, todayKey());
+  if (mmTodayData) {
+    setState({ mmToday: hydrateMmSession(mmTodayData.session, mmTodayData.responses) });
+  } else {
+    setState({ mmToday: null });
+  }
+  const mmAll = await sync.loadAllMitMondana(state.pairId);
+  setState({
+    mmArchive: mmAll.map(({ session, responses }) => hydrateMmArchiveEntry(session, responses)),
+  });
+}
+
+function hydrateMmSession(session, responses) {
+  const mine = responses.find(r => r.member_id === state.myMemberId);
+  const theirs = responses.find(r => r.member_id !== state.myMemberId);
+  return {
+    sessionId: session.id,
+    questionId: session.question_id,
+    question: session.question,
+    date: session.date,
+    initiatorId: session.initiator_id,
+    revealedAt: session.revealed_at ? new Date(session.revealed_at).getTime() : null,
+    note: session.note,
+    myResponse: mine ? { guess: mine.guess, actual: mine.actual, completedAt: new Date(mine.completed_at).getTime() } : null,
+    partnerResponse: theirs ? { guess: theirs.guess, actual: theirs.actual, completedAt: new Date(theirs.completed_at).getTime() } : null,
+  };
+}
+
+function hydrateMmArchiveEntry(session, responses) {
+  const mine = responses.find(r => r.member_id === state.myMemberId);
+  const theirs = responses.find(r => r.member_id !== state.myMemberId);
+  return {
+    sessionId: session.id,
+    questionId: session.question_id,
+    question: session.question,
+    date: session.date,
+    revealedAt: session.revealed_at ? new Date(session.revealed_at).getTime() : null,
+    note: session.note,
+    myGuess: mine?.guess || '',
+    myActual: mine?.actual || '',
+    partnerGuess: theirs?.guess || '',
+    partnerActual: theirs?.actual || '',
+  };
 }
 
 function showOfflineBanner() {
@@ -208,6 +524,7 @@ function showOfflineBanner() {
 
 const app = document.getElementById('app');
 let currentScreen = null;
+let currentTab = 'feladatok';
 
 function navigate(screenId, opts = {}) {
   const tpl = document.getElementById(`screen-${screenId}`);
@@ -227,6 +544,15 @@ function back() {
     navigate('welcome');
   } else if (currentScreen === 'whisper-compose') {
     navigate('home');
+  } else if (currentScreen === 'question-note') {
+    setState({ pendingArchiveQuestion: null });
+    navigate('home');
+  } else if (currentScreen === 'wish-add') {
+    navigate('journal');
+  } else if (currentScreen === 'settings') {
+    navigate('journal');
+  } else if (currentScreen === 'mm-input' || currentScreen === 'mm-status' || currentScreen === 'mm-reveal') {
+    navigate('home');
   } else if (currentScreen === 'journal') {
     navigate('home');
   } else {
@@ -239,12 +565,304 @@ function startupScreen() {
   return 'arrival';
 }
 
-// ─── Pici figura renderelés ────────────────────────────────────────────
+// ─── Pici evolúciós szakaszok ──────────────────────────────────────────
 
-function renderPici(target, size = 64) {
-  if (!target) return;
-  target.innerHTML = `
-    <svg width="${size}" height="${size * 76 / 60}" viewBox="-30 -30 60 76" aria-hidden="true">
+function getPiciStage(bornAt) {
+  if (!bornAt) return 'baby';
+  const days = (Date.now() - bornAt) / (1000 * 60 * 60 * 24);
+  if (days < 15) return 'baby';
+  if (days < 30) return 'gyerek';
+  if (days < 90) return 'tini';
+  return 'felnott';
+}
+
+function piciAgeText(bornAt) {
+  if (!bornAt) return '';
+  const days = Math.floor((Date.now() - bornAt) / (1000 * 60 * 60 * 24));
+  if (days === 0) return 'épp most érkezett';
+  if (days === 1) return '1 napos';
+  if (days < 30) return `${days} napos`;
+  if (days < 90) return `${Math.floor(days / 7)} hetes`;
+  return `${Math.floor(days / 30)} hónapos`;
+}
+
+const STAGE_LABEL = {
+  baby: 'baba',
+  gyerek: 'gyerek',
+  tini: 'tini',
+  felnott: 'felnőtt',
+};
+
+// ─── Pool parserek + prompt sablonok ──────────────────────────────────
+
+function parseMitMondanaPool(text) {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+  if (lines.length === 0) throw new Error('üres pool');
+  return lines.map((t, i) => ({ id: `custom_${String(i).padStart(3,'0')}`, text: t }));
+}
+
+function parseFeladatokPool(text) {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+  if (lines.length === 0) throw new Error('üres pool');
+  const validIdo = new Set(['reggel', 'este', 'hazaerkezes', 'barmikor']);
+  const validKoltseg = new Set(['ingyenes', 'kicsi', 'kozepes']);
+  return lines.map((line, i) => {
+    const parts = line.split('|').map(p => p.trim());
+    if (parts.length !== 3) throw new Error(`hibás sor (3 részből kell állnia): ${line.slice(0, 60)}…`);
+    const [t, ido, koltseg] = parts;
+    if (!validIdo.has(ido)) throw new Error(`hibás időpont „${ido}" — érvényes: reggel, este, hazaerkezes, barmikor`);
+    if (!validKoltseg.has(koltseg)) throw new Error(`hibás költség „${koltseg}" — érvényes: ingyenes, kicsi, kozepes`);
+    return { id: i + 1, text: t, ido, koltseg };
+  });
+}
+
+function parseKerdesekPool(text) {
+  const result = { konnyu: [], kozepes: [], mely: [] };
+  let current = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const m = line.match(/^\[(KONNYU|KOZEPES|MELY)\]$/);
+    if (m) { current = m[1].toLowerCase(); continue; }
+    if (current) result[current].push(line);
+  }
+  const total = result.konnyu.length + result.kozepes.length + result.mely.length;
+  if (total === 0) throw new Error('nincs kérdés egyik szinten sem — ellenőrizd a [KONNYU] / [KOZEPES] / [MELY] jelölőket');
+  return result;
+}
+
+const POOL_PROMPTS = {
+  mitmondana: `Készíts nekem 50 új „Mit mondana a másik?" kérdést egy páros játékhoz.
+
+A kérdések olyanok legyenek, amikre nem tudom biztosan a párom válaszát — érdekes tippelni, érdekes megtudni. Mix legyen JÁTÉKOS / KÉPZELETBELI (pl. szuperhősök, varázspálca, mesebeli helyek, tárgy ami titokban él) és KOMOLYABB / ÖNREFLEXÍV (érzések, emlékek, mit hiányolsz). Magyar nyelven, természetesen.
+
+A formátum legyen pontosan ez (egy kérdés / sor, csak a sorokat add vissza, semmi mást):
+
+# we. mit mondana pool
+# Egy kérdés / sor.
+
+Mit kérnél most a hold-istennőtől?
+Ha most teleportálhatnál egy hétre, hova mennél?
+[stb. 50-ig]
+
+Mentsd .txt fájlba, feltöltöm.`,
+  feladatok: `Készíts nekem 80 új mai apró feladatot egy páros alkalmazáshoz.
+
+Minden feladat egy kis konkrét cselekvés legyen, amit egyikőtök egyedül megtehet aznap a párjáért — gesztus, figyelmesség, érintkezés. Konkrét és könnyen megtehető legyen, ne homályos. Magyar nyelven, természetesen.
+
+A formátum pontosan ez (egy feladat / sor, három részre osztva | jellel), csak a sorokat add vissza:
+
+# we. mai feladat pool
+# Formátum: szöveg | időpont | költség
+# időpont: reggel | este | hazaerkezes | barmikor
+# költség: ingyenes | kicsi | kozepes
+
+Vegyél egy szál virágot hazafelé jövet | hazaerkezes | kicsi
+Mondj egy konkrét köszönöm-öt a párodnak | barmikor | ingyenes
+Készíts neki kávét reggel | reggel | ingyenes
+[stb. 80-ig]
+
+Mentsd .txt fájlba, feltöltöm.`,
+  kerdesek: `Készíts nekem 100 új páros beszélgető-kérdést, három szintbe rendezve: 30 KÖNNYŰ + 40 KÖZEPES + 30 MÉLY.
+
+KÖNNYŰ: kedvenc dolgok, álmok, napi apróságok — kockázat nélküli.
+KÖZEPES: érzelmek, kapcsolat, „mit szeretnél, ha többet hallanám tőled?" típus — kicsit sebezhető.
+MÉLY: alapfélelmek, gyermekkori mintázatok, sebezhetőséget engedő — finomak de őszinték.
+
+Magyar nyelven, természetesen. A formátum pontosan ez, csak a sorokat add vissza:
+
+# we. mai kérdés pool — 30 + 40 + 30 = 100
+# Szintek: [KONNYU] / [KOZEPES] / [MELY]
+
+[KONNYU]
+Mi volt ma a legjobb pillanatod?
+[stb. 30-ig]
+
+[KOZEPES]
+Mit szerettél bennem amikor először találkoztunk?
+[stb. 40-ig]
+
+[MELY]
+Mitől félsz leginkább velem kapcsolatban?
+[stb. 30-ig]
+
+Mentsd .txt fájlba, feltöltöm.`,
+};
+
+function poolStatusText(type) {
+  const c = state.customPools?.[type];
+  if (!c) {
+    if (type === 'mitmondana') return `alap pool · ${mitMondanaPool.length} kérdés`;
+    if (type === 'feladatok') return `alap pool · ${feladatok.length} feladat`;
+    if (type === 'kerdesek') return `alap pool · ${kerdesPool.konnyu.length}+${kerdesPool.kozepes.length}+${kerdesPool.mely.length} kérdés`;
+  }
+  if (type === 'kerdesek') {
+    return `saját pool · ${(c.konnyu?.length||0)}+${(c.kozepes?.length||0)}+${(c.mely?.length||0)} kérdés`;
+  }
+  return `saját pool · ${c.length} elem`;
+}
+
+function refreshPoolStatuses() {
+  ['mitmondana', 'feladatok', 'kerdesek'].forEach(type => {
+    const statusEl = app.querySelector(`[data-pool-status="${type}"]`);
+    if (statusEl) {
+      statusEl.textContent = poolStatusText(type);
+      statusEl.classList.toggle('is-custom', !!state.customPools?.[type]);
+    }
+    const resetBtn = app.querySelector(`[data-action="reset-pool"][data-pool-type="${type}"]`);
+    if (resetBtn) resetBtn.hidden = !state.customPools?.[type];
+  });
+}
+
+async function handlePoolUpload(type, file) {
+  let text;
+  try { text = await file.text(); }
+  catch { toast('nem sikerült beolvasni a fájlt'); return; }
+  let parsed;
+  try {
+    if (type === 'mitmondana') parsed = parseMitMondanaPool(text);
+    else if (type === 'feladatok') parsed = parseFeladatokPool(text);
+    else if (type === 'kerdesek') parsed = parseKerdesekPool(text);
+  } catch (e) {
+    toast('hibás formátum: ' + e.message, 4500);
+    return;
+  }
+  const newCustomPools = { ...state.customPools, [type]: parsed };
+  setState({ customPools: newCustomPools });
+  if (syncReady && state.pairId) {
+    await sync.setCustomPools(state.pairId, newCustomPools);
+  }
+  toast(`${type} pool feltöltve ✓`);
+  refreshPoolStatuses();
+}
+
+async function resetPool(type) {
+  if (!confirm(`Visszaállítod a ${type} pool-t az eredetire?`)) return;
+  const newCustomPools = { ...state.customPools };
+  delete newCustomPools[type];
+  setState({ customPools: newCustomPools });
+  if (syncReady && state.pairId) {
+    await sync.setCustomPools(state.pairId, newCustomPools);
+  }
+  toast(`${type} pool visszaállítva ✓`);
+  refreshPoolStatuses();
+}
+
+async function copyPoolPrompt(type) {
+  const prompt = POOL_PROMPTS[type];
+  if (!prompt) return;
+  try {
+    await navigator.clipboard.writeText(prompt);
+    toast('prompt másolva ✓');
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = prompt;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); toast('prompt másolva ✓'); }
+    catch { toast('másolás sikertelen — másold ki kézzel'); }
+    document.body.removeChild(ta);
+  }
+}
+
+// ─── Pici figura SVG-k szakaszonként ──────────────────────────────────
+
+function piciSVG(stage) {
+  if (stage === 'baby') {
+    // Kicsi, nincs kar/láb, antenna csak két pötty a fején
+    return `
+      <svg width="48" height="58" viewBox="-30 -20 60 60" aria-hidden="true">
+        <ellipse cx="0" cy="32" rx="16" ry="2.5" fill="rgba(0,0,0,0.10)"/>
+        <g class="pici-bob">
+          <ellipse cx="0" cy="14" rx="16" ry="20" class="pici-body-fill"/>
+          <ellipse cx="-5" cy="8" rx="5" ry="9" fill="#FFF" opacity="0.3"/>
+          <circle cx="0" cy="14" r="1.5" class="pici-tip-fill" opacity="0.7"/>
+          <circle cx="-7" cy="0" r="3.8" fill="#1A1714"/>
+          <circle cx="7" cy="0" r="3.8" fill="#1A1714"/>
+          <circle cx="-6" cy="-1.5" r="1.4" fill="#FFF"/>
+          <circle cx="8" cy="-1.5" r="1.4" fill="#FFF"/>
+          <ellipse cx="0" cy="13" rx="2.5" ry="1.5" fill="#1A1714"/>
+          <circle cx="-7" cy="-15" r="2.5" class="pici-tip-fill"/>
+          <circle cx="7" cy="-15" r="2.5" class="pici-tip-fill"/>
+        </g>
+        <style>
+          .pici-body-fill { fill: var(--pici-body); }
+          .pici-tip-fill { fill: var(--pici-tip); }
+          @keyframes pici-bob-anim { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+          .pici-bob { animation: pici-bob-anim 2.2s ease-in-out infinite; transform-origin: center; }
+        </style>
+      </svg>
+    `;
+  }
+  if (stage === 'gyerek') {
+    // Kis lábak, rövid antennák
+    return `
+      <svg width="56" height="68" viewBox="-30 -25 60 70" aria-hidden="true">
+        <ellipse cx="0" cy="38" rx="19" ry="3" fill="rgba(0,0,0,0.10)"/>
+        <g class="pici-bob">
+          <ellipse cx="0" cy="16" rx="18" ry="23" class="pici-body-fill"/>
+          <ellipse cx="-5" cy="9" rx="6" ry="11" fill="#FFF" opacity="0.27"/>
+          <ellipse cx="-6" cy="38" rx="4" ry="2.5" class="pici-body-fill"/>
+          <ellipse cx="6" cy="38" rx="4" ry="2.5" class="pici-body-fill"/>
+          <circle cx="2" cy="14" r="1.5" class="pici-tip-fill" opacity="0.7"/>
+          <circle cx="-3" cy="22" r="1" class="pici-tip-fill" opacity="0.6"/>
+          <ellipse cx="-7" cy="2" rx="4" ry="4.7" fill="#1A1714"/>
+          <ellipse cx="7" cy="2" rx="4" ry="4.7" fill="#1A1714"/>
+          <circle cx="-6" cy="0.5" r="1.4" fill="#FFF"/>
+          <circle cx="8" cy="0.5" r="1.4" fill="#FFF"/>
+          <path d="M -5 16 Q 0 21 5 16" stroke="#1A1714" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <line x1="-7" y1="-13" x2="-9" y2="-19" stroke="#1A1714" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="7" y1="-13" x2="9" y2="-19" stroke="#1A1714" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="-9" cy="-20" r="2.6" class="pici-tip-fill"/>
+          <circle cx="9" cy="-20" r="2.6" class="pici-tip-fill"/>
+        </g>
+        <style>
+          .pici-body-fill { fill: var(--pici-body); }
+          .pici-tip-fill { fill: var(--pici-tip); }
+          @keyframes pici-bob-anim { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+          .pici-bob { animation: pici-bob-anim 2.4s ease-in-out infinite; transform-origin: center; }
+        </style>
+      </svg>
+    `;
+  }
+  if (stage === 'tini') {
+    // Karok, lábak, normál antennák de rövidebbek
+    return `
+      <svg width="60" height="74" viewBox="-30 -28 60 74" aria-hidden="true">
+        <ellipse cx="0" cy="42" rx="21" ry="3.2" fill="rgba(0,0,0,0.10)"/>
+        <g class="pici-bob">
+          <ellipse cx="0" cy="17" rx="19" ry="25" class="pici-body-fill"/>
+          <ellipse cx="-6" cy="10" rx="6.5" ry="12" fill="#FFF" opacity="0.26"/>
+          <ellipse cx="-17" cy="20" rx="4.5" ry="7" class="pici-body-fill"/>
+          <ellipse cx="17" cy="20" rx="4.5" ry="7" class="pici-body-fill"/>
+          <ellipse cx="-7" cy="42" rx="4.5" ry="2.8" class="pici-body-fill"/>
+          <ellipse cx="7" cy="42" rx="4.5" ry="2.8" class="pici-body-fill"/>
+          <circle cx="2" cy="15" r="1.5" class="pici-tip-fill" opacity="0.7"/>
+          <circle cx="-3" cy="23" r="1" class="pici-tip-fill" opacity="0.6"/>
+          <ellipse cx="-7" cy="3" rx="4" ry="4.6" fill="#1A1714"/>
+          <ellipse cx="7" cy="3" rx="4" ry="4.6" fill="#1A1714"/>
+          <circle cx="-6" cy="1.5" r="1.4" fill="#FFF"/>
+          <circle cx="8" cy="1.5" r="1.4" fill="#FFF"/>
+          <path d="M -6 17 Q 0 23 6 17" stroke="#1A1714" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <line x1="-7" y1="-12" x2="-10" y2="-21" stroke="#1A1714" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="7" y1="-12" x2="10" y2="-21" stroke="#1A1714" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="-10" cy="-22" r="2.9" class="pici-tip-fill"/>
+          <circle cx="10" cy="-22" r="2.9" class="pici-tip-fill"/>
+        </g>
+        <style>
+          .pici-body-fill { fill: var(--pici-body); }
+          .pici-tip-fill { fill: var(--pici-tip); }
+          @keyframes pici-bob-anim { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+          .pici-bob { animation: pici-bob-anim 2.5s ease-in-out infinite; transform-origin: center; }
+        </style>
+      </svg>
+    `;
+  }
+  // felnott — eredeti
+  return `
+    <svg width="60" height="76" viewBox="-30 -30 60 76" aria-hidden="true">
       <ellipse cx="0" cy="44" rx="22" ry="3.5" fill="rgba(0,0,0,0.10)"/>
       <g class="pici-bob">
         <ellipse cx="0" cy="18" rx="20" ry="27" class="pici-body-fill"/>
@@ -273,6 +891,14 @@ function renderPici(target, size = 64) {
       </style>
     </svg>
   `;
+}
+
+// ─── Pici figura renderelés (stage-aware) ─────────────────────────────
+
+function renderPici(target) {
+  if (!target) return;
+  const stage = getPiciStage(state.piciBornAt);
+  target.innerHTML = piciSVG(stage);
 }
 
 function renderStars(container, count = 14) {
@@ -312,7 +938,7 @@ function ensureTodayTask() {
 }
 
 function drawNewTask(excludeId = null) {
-  const pool = excludeId ? feladatok.filter(f => f.id !== excludeId) : feladatok;
+  const pool = excludeId ? getFeladatokPool().filter(f => f.id !== excludeId) : getFeladatokPool();
   const pick = pool[Math.floor(Math.random() * pool.length)];
   setState({
     todayTask: { ...pick, day: todayKey() },
@@ -323,6 +949,63 @@ function drawNewTask(excludeId = null) {
 function metaForTask(task) {
   const map = { reggel: 'reggel', este: 'este', hazaerkezes: 'hazafelé', barmikor: 'bármikor' };
   return [map[task.ido] || 'bármikor', task.koltseg === 'ingyenes' ? 'ingyenes' : task.koltseg].join(' · ');
+}
+
+// ─── Mai kérdés (sorsolás + szint címkék) ─────────────────────────────
+
+const LEVEL_LABELS = { konnyu: 'könnyű', kozepes: 'közepes', mely: 'mély' };
+
+function pickTodayQuestion() {
+  const level = state.preferredLevel || 'kozepes';
+  const allKerdesek = getKerdesekPool();
+  const pool = allKerdesek[level] || allKerdesek.kozepes;
+  const archivedIds = new Set(
+    (state.kerdesArchive || [])
+      .filter(e => e.level === level)
+      .map(e => e.questionId)
+      .filter(Boolean)
+  );
+  for (let i = 0; i < pool.length; i++) {
+    const id = `${level}_${i}`;
+    if (!archivedIds.has(id)) {
+      return { id, text: pool[i], level, index: i };
+    }
+  }
+  return { id: `${level}_0`, text: pool[0], level, index: 0 };
+}
+
+function isTodayQuestionDone() {
+  return state.todayQuestionDoneAt && state.todayQuestionDay === todayKey();
+}
+
+// ─── Mit mondana — pool válogatás + state-számítás ────────────────────
+
+function pickTodayMitMondana() {
+  const usedIds = new Set(
+    (state.mmArchive || []).map(s => s.questionId).filter(Boolean)
+  );
+  const pool = getMitMondanaPool();
+  for (const q of pool) {
+    if (!usedIds.has(q.id)) return q;
+  }
+  return pool[0];
+}
+
+function mmStatus() {
+  // visszaadja: 'none' | 'i-submitted' | 'partner-submitted' | 'both' | 'revealed'
+  const t = state.mmToday;
+  if (!t) return 'none';
+  if (t.revealedAt) return 'revealed';
+  const mine = !!t.myResponse;
+  const theirs = !!t.partnerResponse;
+  if (mine && theirs) return 'both';
+  if (mine) return 'i-submitted';
+  if (theirs) return 'partner-submitted';
+  return 'none';
+}
+
+function todayHasMmRevealed() {
+  return mmStatus() === 'revealed' && state.mmToday?.date === todayKey();
 }
 
 // ─── Toast ─────────────────────────────────────────────────────────────
@@ -432,6 +1115,8 @@ const screenBindings = {
     ensureTodayTask();
     renderTask();
     renderWhisper();
+    renderQuestionCard();
+    renderPickCard();
   },
 
   ['whisper-compose']() {
@@ -447,12 +1132,75 @@ const screenBindings = {
     });
   },
 
+  ['question-note']() {
+    const q = state.pendingArchiveQuestion;
+    if (!q) {
+      back();
+      return;
+    }
+    const qEl = app.querySelector('[data-discussed-question]');
+    if (qEl) qEl.textContent = q.text;
+    setTimeout(() => app.querySelector('[data-note-input]')?.focus(), 200);
+  },
+
+  ['wish-add']() {
+    setTimeout(() => app.querySelector('[data-wish-text-input]')?.focus(), 200);
+  },
+
+  settings() {
+    const renameInput = app.querySelector('[data-rename-input]');
+    if (renameInput && state.piciName) renameInput.value = state.piciName;
+    const ageEl = app.querySelector('[data-pici-age]');
+    if (ageEl) {
+      const stage = getPiciStage(state.piciBornAt);
+      const age = piciAgeText(state.piciBornAt);
+      ageEl.textContent = `${age} · ${STAGE_LABEL[stage]}`;
+    }
+    // téma pirulák
+    app.querySelectorAll('[data-theme-pick]').forEach(btn => {
+      btn.classList.toggle('is-active', btn.dataset.themePick === (state.themePref || 'auto'));
+    });
+    // pool státuszok
+    refreshPoolStatuses();
+    // file input change → upload
+    app.querySelectorAll('[data-pool-upload]').forEach(input => {
+      input.addEventListener('change', async e => {
+        const type = e.target.dataset.poolUpload;
+        const file = e.target.files?.[0];
+        if (!file) return;
+        await handlePoolUpload(type, file);
+        e.target.value = '';  // reset
+      });
+    });
+  },
+
+  ['mm-input']() {
+    const t = state.mmToday;
+    if (!t) {
+      back();
+      return;
+    }
+    const qEl = app.querySelector('[data-mm-question]');
+    if (qEl) qEl.textContent = t.question;
+    setTimeout(() => app.querySelector('[data-mm-guess]')?.focus(), 200);
+  },
+
+  ['mm-status']() {
+    renderMmStatus();
+  },
+
+  ['mm-reveal']() {
+    renderMmReveal();
+  },
+
   journal() {
-    renderJournalTab('feladatok');
+    currentTab = 'feladatok';
+    renderJournalTab(currentTab);
     app.querySelectorAll('[data-tab]').forEach(tab => {
       tab.addEventListener('click', () => {
+        currentTab = tab.dataset.tab;
         app.querySelectorAll('[data-tab]').forEach(t => t.classList.toggle('is-active', t === tab));
-        renderJournalTab(tab.dataset.tab);
+        renderJournalTab(currentTab);
       });
     });
   },
@@ -525,6 +1273,35 @@ function renderTask() {
   if (card) card.classList.toggle('is-done', !!state.todayTaskDoneAt);
 }
 
+function renderQuestionCard() {
+  const card = app.querySelector('[data-question-card]');
+  const doneCard = app.querySelector('[data-question-done]');
+  if (!card || !doneCard) return;
+
+  if (isTodayQuestionDone()) {
+    card.hidden = true;
+    doneCard.hidden = false;
+    const t = app.querySelector('[data-question-done-text]');
+    if (t) t.textContent = `„${state.todayQuestionText || ''}"`;
+    return;
+  }
+
+  // még nem beszéltétek meg ma — render a választható kártyát
+  card.hidden = false;
+  doneCard.hidden = true;
+
+  const q = pickTodayQuestion();
+  const labelEl = app.querySelector('[data-question-label]');
+  const textEl = app.querySelector('[data-question-text]');
+  if (labelEl) labelEl.textContent = `Mai kérdés · ${LEVEL_LABELS[q.level]}`;
+  if (textEl) textEl.textContent = q.text;
+
+  // szint-pirulák — aktív bejelölve
+  app.querySelectorAll('[data-level]').forEach(p => {
+    p.classList.toggle('is-active', p.dataset.level === state.preferredLevel);
+  });
+}
+
 function renderWhisper() {
   const container = app.querySelector('[data-whisper]');
   if (!container) return;
@@ -547,18 +1324,277 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+function renderPickCard() {
+  const card = app.querySelector('[data-pick-card]');
+  const doneCard = app.querySelector('[data-pick-done]');
+  if (!card || !doneCard) return;
+
+  const status = mmStatus();
+  if (status === 'revealed' && state.mmToday?.date === todayKey()) {
+    card.hidden = true;
+    doneCard.hidden = false;
+    const t = app.querySelector('[data-pick-done-text]');
+    if (t) t.textContent = `„${state.mmToday.question}"`;
+    return;
+  }
+
+  card.hidden = false;
+  doneCard.hidden = true;
+
+  const q = state.mmToday
+    ? { id: state.mmToday.questionId, text: state.mmToday.question }
+    : pickTodayMitMondana();
+  const qEl = app.querySelector('[data-pick-question]');
+  if (qEl) qEl.textContent = q.text;
+
+  const statusEl = app.querySelector('[data-pick-status]');
+  const ctaEl = app.querySelector('[data-pick-cta]');
+  if (!statusEl || !ctaEl) return;
+
+  if (status === 'none') {
+    statusEl.textContent = '';
+    ctaEl.textContent = 'megnyitom →';
+  } else if (status === 'i-submitted') {
+    statusEl.textContent = `elküldted ✓ · várunk a párodra`;
+    ctaEl.textContent = 'státusz →';
+  } else if (status === 'partner-submitted') {
+    statusEl.textContent = 'ő már válaszolt — most te';
+    ctaEl.textContent = 'megnyitom →';
+  } else if (status === 'both') {
+    statusEl.textContent = 'mindketten kész';
+    ctaEl.textContent = 'felfedem →';
+  }
+}
+
+function renderMmStatus() {
+  const t = state.mmToday;
+  if (!t) return;
+  const qEl = app.querySelector('[data-mm-question]');
+  if (qEl) qEl.textContent = t.question;
+
+  const partnerDot = app.querySelector('[data-mm-partner-dot]');
+  const partnerStatus = app.querySelector('[data-mm-partner-status]');
+  const revealBtn = app.querySelector('[data-mm-reveal-btn]');
+
+  if (t.partnerResponse) {
+    partnerDot?.classList.add('is-done');
+    if (partnerStatus) partnerStatus.textContent = `${state.piciName || 'a párod'}: válaszolt ✓`;
+    if (revealBtn) revealBtn.disabled = false;
+  } else {
+    partnerDot?.classList.remove('is-done');
+    if (partnerStatus) partnerStatus.textContent = `várunk a párodra…`;
+    if (revealBtn) revealBtn.disabled = true;
+  }
+}
+
+function renderMmReveal() {
+  const t = state.mmToday;
+  if (!t) return;
+  const qEl = app.querySelector('[data-mm-question]');
+  if (qEl) qEl.textContent = t.question;
+
+  const setText = (sel, val) => {
+    const el = app.querySelector(sel);
+    if (el) el.textContent = val ? `„${val}"` : '—';
+  };
+  setText('[data-mm-partner-guess]', t.partnerResponse?.guess);
+  setText('[data-mm-self-actual]', t.myResponse?.actual);
+  setText('[data-mm-self-guess]', t.myResponse?.guess);
+  setText('[data-mm-partner-actual]', t.partnerResponse?.actual);
+
+  const noteSection = app.querySelector('[data-mm-note-section]');
+  const noteSaved = app.querySelector('[data-mm-note-saved]');
+  if (t.note && noteSection && noteSaved) {
+    noteSection.hidden = true;
+    noteSaved.hidden = false;
+    const noteText = app.querySelector('[data-mm-saved-note-text]');
+    if (noteText) noteText.textContent = `„${t.note}"`;
+  }
+}
+
 function renderJournalTab(tabId) {
   const container = app.querySelector('[data-tab-content]');
   if (!container) return;
   if (tabId === 'feladatok') {
     container.innerHTML = renderFeladatokTab();
   } else if (tabId === 'suttogasok') {
-    container.innerHTML = '<div class="empty-state">Suttogás-archív hamarosan...</div>';
+    container.innerHTML = renderSuttogasokTab();
   } else if (tabId === 'vagyak') {
-    container.innerHTML = '<div class="empty-state">Vágy-lista hamarosan...</div>';
+    container.innerHTML = renderVagyakTab();
   } else if (tabId === 'kerdesek') {
-    container.innerHTML = '<div class="empty-state">Kérdés-archív hamarosan...</div>';
+    container.innerHTML = renderKerdesekTab();
   }
+}
+
+function renderVagyakTab() {
+  if (!state.vagyak || state.vagyak.length === 0) {
+    return `
+      <div class="empty-state">Még nincs közös vágy.<br>Az alább gombbal indítsátok el.</div>
+      <button class="add-wish-btn" data-action="open-wish-add">+ új vágy</button>
+    `;
+  }
+  // sorrendezés: nyitott elöl, beteljesült alul
+  const sorted = [...state.vagyak].sort((a, b) => {
+    if (!a.doneAt && b.doneAt) return -1;
+    if (a.doneAt && !b.doneAt) return 1;
+    return b.createdAt - a.createdAt;
+  });
+  return `
+    <div class="wish-list">
+      ${sorted.map(w => `
+        <div class="wish-item ${w.doneAt ? 'is-done' : ''}" data-wish-id="${w.id}" data-action="toggle-wish-done">
+          <div class="wish-mark"><span class="wish-check">✓</span></div>
+          <div class="wish-content">
+            <div class="wish-title">${escapeHtml(w.text)}</div>
+            <div class="wish-meta">${w.doneAt ? `beteljesült · ${formatDate(w.doneAt)}` : formatDate(w.createdAt)}</div>
+            ${w.note ? `<div class="wish-note">„${escapeHtml(w.note)}"</div>` : ''}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    <button class="add-wish-btn" data-action="open-wish-add">+ új vágy</button>
+  `;
+}
+
+function renderSuttogasokTab() {
+  if (!state.whisperArchive || state.whisperArchive.length === 0) {
+    return '<div class="empty-state">Még nincs küldött suttogás. Az első a Mindennapok tetején.</div>';
+  }
+  const now = Date.now();
+  const today = [], yesterday = [], thisWeek = [], earlier = [];
+  for (const entry of state.whisperArchive) {
+    const days = (now - entry.sentAt) / (1000 * 60 * 60 * 24);
+    if (days < 1) today.push(entry);
+    else if (days < 2) yesterday.push(entry);
+    else if (days < 7) thisWeek.push(entry);
+    else earlier.push(entry);
+  }
+  const groups = [
+    ['MA', today], ['TEGNAP', yesterday], ['A HÉTEN', thisWeek], ['KORÁBBAN', earlier],
+  ];
+  return groups.filter(([, arr]) => arr.length > 0).map(([label, arr]) => `
+    <div class="log-group">
+      <div class="log-group-label">${label}</div>
+      ${arr.map(entry => `
+        <div class="whisper-archive-row">
+          <div class="whisper-archive-text">„${escapeHtml(entry.text)}"</div>
+          <div class="whisper-archive-meta">
+            <span class="${entry.by === 'self' ? 'log-from-self' : 'log-from-partner'}">${entry.by === 'self' ? 'Te' : 'ő'}</span>
+            · ${formatTime(entry.sentAt)}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+}
+
+function formatDate(timestamp) {
+  const d = new Date(timestamp);
+  const now = new Date();
+  if (d.getFullYear() === now.getFullYear()) {
+    const months = ['jan', 'febr', 'márc', 'ápr', 'máj', 'jún', 'júl', 'aug', 'szept', 'okt', 'nov', 'dec'];
+    return `${months[d.getMonth()]} ${d.getDate()}.`;
+  }
+  return d.toLocaleDateString('hu-HU');
+}
+
+function renderKerdesekTab() {
+  const allEntries = [
+    ...state.kerdesArchive.map(e => ({
+      kind: 'kerdes',
+      question: e.question,
+      level: e.level,
+      note: e.note,
+      by: e.by,
+      timestamp: e.discussedAt,
+    })),
+    ...state.mmArchive.map(e => ({
+      kind: 'mm',
+      sessionId: e.sessionId,
+      question: e.question,
+      myGuess: e.myGuess,
+      myActual: e.myActual,
+      partnerGuess: e.partnerGuess,
+      partnerActual: e.partnerActual,
+      note: e.note,
+      timestamp: e.revealedAt,
+    })),
+  ];
+
+  if (allEntries.length === 0) {
+    return '<div class="empty-state">Még nincs megbeszélt kérdés. Az első „Megbeszéltük" után itt jelenik meg.</div>';
+  }
+
+  // sorrend: legfrissebb felül
+  allEntries.sort((a, b) => b.timestamp - a.timestamp);
+
+  const now = Date.now();
+  const today = [], yesterday = [], thisWeek = [], earlier = [];
+  for (const entry of allEntries) {
+    const days = (now - entry.timestamp) / (1000 * 60 * 60 * 24);
+    if (days < 1) today.push(entry);
+    else if (days < 2) yesterday.push(entry);
+    else if (days < 7) thisWeek.push(entry);
+    else earlier.push(entry);
+  }
+  const groups = [
+    ['MA', today], ['TEGNAP', yesterday], ['A HÉTEN', thisWeek], ['KORÁBBAN', earlier],
+  ];
+  return groups.filter(([, arr]) => arr.length > 0).map(([label, arr]) => `
+    <div class="log-group">
+      <div class="log-group-label">${label}</div>
+      ${arr.map(entry => entry.kind === 'mm' ? renderMmArchiveRow(entry) : renderKerdesRow(entry)).join('')}
+    </div>
+  `).join('');
+}
+
+function renderKerdesRow(entry) {
+  return `
+    <div class="log-row is-done">
+      <div class="log-content">
+        <div class="log-text">${escapeHtml(entry.question)}</div>
+        <div class="log-meta">
+          <span class="${entry.by === 'self' ? 'log-from-self' : 'log-from-partner'}">${entry.by === 'self' ? 'Te' : 'ő'}</span>
+          · ${LEVEL_LABELS[entry.level] || ''}
+          · ${formatTime(entry.timestamp)}
+        </div>
+        ${entry.note ? `<div class="log-note">„${escapeHtml(entry.note)}"</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderMmArchiveRow(entry) {
+  return `
+    <div class="log-row is-done mm-archive-row">
+      <div class="log-content">
+        <div class="log-text">${escapeHtml(entry.question)}</div>
+        <div class="log-meta">
+          <span class="mm-badge">Mit mondana</span>
+          · ${formatTime(entry.timestamp)}
+        </div>
+        <div class="mm-archive-mini">
+          <div class="mm-archive-pair">
+            <span class="mm-archive-label">ő rólad:</span>
+            <span class="mm-archive-text">„${escapeHtml(entry.partnerGuess || '—')}"</span>
+          </div>
+          <div class="mm-archive-pair">
+            <span class="mm-archive-label">te:</span>
+            <span class="mm-archive-text mm-archive-actual">„${escapeHtml(entry.myActual || '—')}"</span>
+          </div>
+          <div class="mm-archive-pair">
+            <span class="mm-archive-label">te róla:</span>
+            <span class="mm-archive-text">„${escapeHtml(entry.myGuess || '—')}"</span>
+          </div>
+          <div class="mm-archive-pair">
+            <span class="mm-archive-label">ő:</span>
+            <span class="mm-archive-text mm-archive-actual">„${escapeHtml(entry.partnerActual || '—')}"</span>
+          </div>
+        </div>
+        ${entry.note ? `<div class="log-note">„${escapeHtml(entry.note)}"</div>` : ''}
+      </div>
+    </div>
+  `;
 }
 
 function renderFeladatokTab() {
@@ -686,7 +1722,317 @@ document.addEventListener('click', async e => {
       toast('szép vagy ❤');
       break;
     }
+
+    case 'discuss-question': {
+      // megnyomták a "Megbeszéltük"-et, megnyitjuk a jegyzet-modalt
+      const q = pickTodayQuestion();
+      setState({ pendingArchiveQuestion: q });
+      navigate('question-note');
+      break;
+    }
+
+    case 'archive-question-skip':
+    case 'archive-question-save': {
+      const q = state.pendingArchiveQuestion;
+      if (!q) { back(); break; }
+      const noteEl = app.querySelector('[data-note-input]');
+      const note = (action === 'archive-question-save' && noteEl)
+        ? noteEl.value.trim() || null
+        : null;
+      const now = Date.now();
+      const today = todayKey();
+      // helyi mentés
+      setState({
+        todayQuestionDoneAt: now,
+        todayQuestionDay: today,
+        todayQuestionText: q.text,
+        kerdesArchive: [
+          ...state.kerdesArchive,
+          {
+            id: 'local-' + now,
+            question: q.text,
+            questionId: q.id,
+            level: q.level,
+            note,
+            by: 'self',
+            discussedAt: now,
+          },
+        ],
+        pendingArchiveQuestion: null,
+      });
+      // szerver-mentés
+      if (syncReady && state.pairId) {
+        await sync.archiveQuestion(state.pairId, state.myMemberId, q.text, q.level, q.id, note);
+      }
+      toast('elmentve ❤');
+      navigate('home');
+      break;
+    }
+
+    case 'open-wish-add': {
+      navigate('wish-add');
+      break;
+    }
+
+    case 'save-wish': {
+      const textEl = app.querySelector('[data-wish-text-input]');
+      const noteEl = app.querySelector('[data-wish-note-input]');
+      const text = textEl?.value.trim();
+      const note = noteEl?.value.trim() || null;
+      if (!text) {
+        toast('írj egy vágyat');
+        textEl?.focus();
+        return;
+      }
+      // optimista helyi
+      const localId = 'local-' + Date.now();
+      const now = Date.now();
+      setState({
+        vagyak: [{
+          id: localId, text, note, doneAt: null,
+          createdBy: state.myMemberId, createdAt: now,
+        }, ...state.vagyak],
+      });
+      if (syncReady && state.pairId) {
+        const inserted = await sync.addWish(state.pairId, state.myMemberId, text, note);
+        if (inserted) {
+          // helyettesítjük a lokális ID-t a szerverivel
+          setState({
+            vagyak: state.vagyak.map(v => v.id === localId ? { ...v, id: inserted.id } : v),
+          });
+        }
+      }
+      toast('új vágy ❤');
+      navigate('journal');
+      break;
+    }
+
+    case 'toggle-wish-done': {
+      const wishEl = e.target.closest('[data-wish-id]');
+      if (!wishEl) break;
+      const wishId = wishEl.dataset.wishId;
+      const wish = state.vagyak.find(v => v.id === wishId);
+      if (!wish) break;
+      const newDoneAt = wish.doneAt ? null : Date.now();
+      // optimista helyi
+      setState({
+        vagyak: state.vagyak.map(v => v.id === wishId ? { ...v, doneAt: newDoneAt } : v),
+      });
+      renderJournalTab('vagyak');
+      if (syncReady && wishId.indexOf('local-') !== 0) {
+        await sync.toggleWishDone(wishId, newDoneAt ? new Date(newDoneAt).toISOString() : null);
+      }
+      if (newDoneAt) toast('beteljesült ❤');
+      break;
+    }
+
+    case 'open-settings': {
+      navigate('settings');
+      break;
+    }
+
+    case 'save-pici-name': {
+      const input = app.querySelector('[data-rename-input]');
+      const name = input?.value.trim();
+      if (!name) {
+        toast('adj nevet');
+        input?.focus();
+        return;
+      }
+      if (name === state.piciName) {
+        toast('ugyanaz a név');
+        return;
+      }
+      setState({ piciName: name });
+      if (syncReady && state.pairId) {
+        await sync.setPiciName(state.pairId, name);
+      }
+      toast('átnevezve ❤');
+      break;
+    }
+
+    case 'reset-all': {
+      if (!confirm('Biztos? Ezzel törlöd a helyi állapotot és újra kell párosítanotok. (A Supabase adatok érintetlenek maradnak.)')) {
+        return;
+      }
+      resetAll();
+      break;
+    }
+
+    case 'upload-pool': {
+      const type = actionEl.dataset.poolType;
+      const fileInput = app.querySelector(`[data-pool-upload="${type}"]`);
+      fileInput?.click();
+      break;
+    }
+
+    case 'reset-pool': {
+      const type = actionEl.dataset.poolType;
+      await resetPool(type);
+      break;
+    }
+
+    case 'copy-pool-prompt': {
+      const type = actionEl.dataset.poolType;
+      await copyPoolPrompt(type);
+      break;
+    }
+
+    case 'open-mitmondana': {
+      const status = mmStatus();
+      // ha még nincs session: létrehozzuk + input
+      if (status === 'none') {
+        if (syncReady && state.pairId) {
+          const q = pickTodayMitMondana();
+          const created = await sync.createMitMondanaSession(state.pairId, state.myMemberId, q);
+          if (!created) {
+            toast('hiba történt — próbáld újra');
+            return;
+          }
+          setState({ mmToday: hydrateMmSession(created, []) });
+        } else {
+          // lokális mode — csak helyileg létrehozzuk
+          const q = pickTodayMitMondana();
+          setState({
+            mmToday: {
+              sessionId: 'local-' + Date.now(),
+              questionId: q.id,
+              question: q.text,
+              date: todayKey(),
+              myResponse: null,
+              partnerResponse: null,
+              revealedAt: null,
+              note: null,
+            },
+          });
+        }
+        navigate('mm-input');
+      } else if (status === 'i-submitted') {
+        navigate('mm-status');
+      } else if (status === 'partner-submitted') {
+        navigate('mm-input');
+      } else if (status === 'both') {
+        navigate('mm-status');
+      } else if (status === 'revealed') {
+        navigate('mm-reveal');
+      }
+      break;
+    }
+
+    case 'submit-mm': {
+      const guessEl = app.querySelector('[data-mm-guess]');
+      const actualEl = app.querySelector('[data-mm-actual]');
+      const guess = guessEl?.value.trim();
+      const actual = actualEl?.value.trim();
+      if (!guess || !actual) {
+        toast('mindkét mezőt töltsd ki');
+        if (!guess) guessEl?.focus(); else actualEl?.focus();
+        return;
+      }
+      if (!state.mmToday) return;
+      // helyi optimista
+      setState({
+        mmToday: {
+          ...state.mmToday,
+          myResponse: { guess, actual, completedAt: Date.now() },
+        },
+      });
+      if (syncReady && !state.mmToday.sessionId.startsWith('local-')) {
+        await sync.submitMitMondanaResponse(state.mmToday.sessionId, state.myMemberId, guess, actual);
+      }
+      toast('beküldted ✓');
+      // ha már mindketten kész → status (felfedés-gomb aktív)
+      navigate('mm-status');
+      break;
+    }
+
+    case 'reveal-mm': {
+      if (!state.mmToday) break;
+      // ha már felfedve, csak ugorjunk
+      if (state.mmToday.revealedAt) {
+        navigate('mm-reveal');
+        break;
+      }
+      // helyi optimista
+      const now = Date.now();
+      setState({
+        mmToday: { ...state.mmToday, revealedAt: now },
+      });
+      if (syncReady && !state.mmToday.sessionId.startsWith('local-')) {
+        await sync.revealMitMondana(state.mmToday.sessionId, null);
+      }
+      navigate('mm-reveal');
+      break;
+    }
+
+    case 'save-mm-note': {
+      if (!state.mmToday) break;
+      const noteEl = app.querySelector('[data-mm-note]');
+      const note = noteEl?.value.trim() || null;
+      // helyi mentés
+      setState({
+        mmToday: { ...state.mmToday, note },
+      });
+      // archív frissítése
+      const existing = state.mmArchive.find(e => e.sessionId === state.mmToday.sessionId);
+      if (existing) {
+        setState({
+          mmArchive: state.mmArchive.map(e => e.sessionId === state.mmToday.sessionId ? { ...e, note } : e),
+        });
+      } else {
+        setState({
+          mmArchive: [{
+            sessionId: state.mmToday.sessionId,
+            questionId: state.mmToday.questionId,
+            question: state.mmToday.question,
+            date: state.mmToday.date,
+            revealedAt: state.mmToday.revealedAt,
+            note,
+            myGuess: state.mmToday.myResponse?.guess || '',
+            myActual: state.mmToday.myResponse?.actual || '',
+            partnerGuess: state.mmToday.partnerResponse?.guess || '',
+            partnerActual: state.mmToday.partnerResponse?.actual || '',
+          }, ...state.mmArchive],
+        });
+      }
+      if (syncReady && !state.mmToday.sessionId.startsWith('local-')) {
+        await sync.revealMitMondana(state.mmToday.sessionId, note);
+      }
+      toast('elmentve ❤');
+      navigate('home');
+      break;
+    }
   }
+});
+
+// ─── Szint-pirula tap (külön handler, mert dinamikusan változnak) ─────
+
+document.addEventListener('click', async e => {
+  const pill = e.target.closest('[data-level]');
+  if (!pill) return;
+  const newLevel = pill.dataset.level;
+  if (newLevel === state.preferredLevel) return;
+  setState({ preferredLevel: newLevel });
+  if (syncReady && state.pairId) {
+    await sync.setPreferredLevel(state.pairId, newLevel);
+  }
+  if (currentScreen === 'home') renderQuestionCard();
+});
+
+// ─── Téma-pirula tap (settings) ────────────────────────────────────────
+
+document.addEventListener('click', e => {
+  const btn = e.target.closest('[data-theme-pick]');
+  if (!btn) return;
+  const newTheme = btn.dataset.themePick;
+  if (newTheme === state.themePref) return;
+  setState({ themePref: newTheme });
+  applyTheme(newTheme);
+  // pirulák frissítése
+  app.querySelectorAll('[data-theme-pick]').forEach(b => {
+    b.classList.toggle('is-active', b.dataset.themePick === newTheme);
+  });
+  toast(`téma: ${newTheme === 'auto' ? 'automatikus' : newTheme === 'light' ? 'világos' : 'sötét'}`);
 });
 
 // ═══════════════════════════════════════════════════════════════════════

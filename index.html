@@ -211,6 +211,20 @@
         </div>
       </div>
 
+      <!-- Mai választás (csapat) -->
+      <div class="card card-pick" data-pick-card hidden>
+        <div class="card-label">Mai választás · csapat</div>
+        <div class="pick-title">Mit mondana a másik?</div>
+        <div class="pick-question" data-pick-question></div>
+        <div class="pick-status" data-pick-status></div>
+        <button class="btn-primary" data-action="open-mitmondana" data-pick-cta>megnyitom →</button>
+      </div>
+      <div class="card card-pick-done" data-pick-done hidden>
+        <div class="card-label">Mai választás · megbeszéltétek ✓</div>
+        <div class="pick-done-text" data-pick-done-text></div>
+        <div class="question-done-meta">holnap új jön</div>
+      </div>
+
       <!-- Mai feladat -->
       <div class="card card-task">
         <div class="task-head">
@@ -224,6 +238,23 @@
           <span class="task-meta" data-task-meta></span>
           <button class="task-done-btn" data-action="task-done">megcsináltam</button>
         </div>
+      </div>
+
+      <!-- Mai kérdés -->
+      <div class="card card-question" data-question-card hidden>
+        <div class="card-label" data-question-label>Mai kérdés · közepes</div>
+        <div class="question-text" data-question-text></div>
+        <div class="level-row">
+          <button class="pill" data-level="konnyu">könnyű</button>
+          <button class="pill" data-level="kozepes">közepes</button>
+          <button class="pill" data-level="mely">mély</button>
+        </div>
+        <button class="btn-primary" data-action="discuss-question">Megbeszéltük</button>
+      </div>
+      <div class="card card-question-done" data-question-done hidden>
+        <div class="card-label">Mai kérdés · megbeszéltétek ✓</div>
+        <div class="question-done-text" data-question-done-text></div>
+        <div class="question-done-meta">holnap új jön</div>
       </div>
     </div>
   </section>
@@ -250,6 +281,28 @@
   </section>
 </template>
 
+<!-- 7b. KÉRDÉS-jegyzet modal -->
+<template id="screen-question-note">
+  <section class="screen screen-modal">
+    <header class="modal-header">
+      <button class="back-btn" data-action="back" aria-label="vissza">
+        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <h3 class="modal-title">megbeszéltük</h3>
+      <span></span>
+    </header>
+    <div class="modal-body">
+      <div class="discussed-question" data-discussed-question></div>
+      <p class="modal-hint">egy mondat erről? — opcionális</p>
+      <textarea class="note-input" data-note-input maxlength="240" placeholder="..."></textarea>
+      <div class="modal-actions">
+        <button class="btn-ghost" data-action="archive-question-skip">kihagyom</button>
+        <button class="btn-primary" data-action="archive-question-save">elmentem</button>
+      </div>
+    </div>
+  </section>
+</template>
+
 <!-- 8. NAPLÓNK · alap-keret (a fülek tartalmát később bővítjük) -->
 <template id="screen-journal">
   <section class="screen screen-journal">
@@ -258,7 +311,13 @@
         <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <h2 class="journal-title">Naplónk</h2>
-      <span></span>
+      <button class="more-btn" data-action="open-settings" aria-label="beállítások">
+        <svg width="22" height="5" viewBox="0 0 22 5">
+          <circle cx="2.5" cy="2.5" r="1.7" fill="currentColor"/>
+          <circle cx="11" cy="2.5" r="1.7" fill="currentColor"/>
+          <circle cx="19.5" cy="2.5" r="1.7" fill="currentColor"/>
+        </svg>
+      </button>
     </header>
     <nav class="tabs" data-tabs>
       <button class="tab" data-tab="vagyak">Vágyak</button>
@@ -267,6 +326,185 @@
       <button class="tab" data-tab="kerdesek">Kérdések</button>
     </nav>
     <div class="journal-scroll" data-tab-content></div>
+  </section>
+</template>
+
+<!-- 9. ÚJ VÁGY modal -->
+<template id="screen-wish-add">
+  <section class="screen screen-modal">
+    <header class="modal-header">
+      <button class="back-btn" data-action="back" aria-label="vissza">
+        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <h3 class="modal-title">új vágy</h3>
+      <span></span>
+    </header>
+    <div class="modal-body">
+      <p class="modal-hint">amit közösen szeretnétek megélni</p>
+      <textarea class="wish-input" data-wish-text-input maxlength="120" placeholder="..."></textarea>
+      <input type="text" class="wish-note-input" data-wish-note-input maxlength="100" placeholder="opcionális jegyzet — pl. „valamikor jövőre"">
+      <button class="btn-primary" data-action="save-wish">elmentem</button>
+    </div>
+  </section>
+</template>
+
+<!-- 11. MIT MONDANA · input (két szöveg-mező) -->
+<template id="screen-mm-input">
+  <section class="screen screen-modal">
+    <header class="modal-header">
+      <button class="back-btn" data-action="back" aria-label="vissza">
+        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <h3 class="modal-title">mit mondana a másik</h3>
+      <span></span>
+    </header>
+    <div class="modal-body">
+      <div class="mm-question" data-mm-question></div>
+      <div class="mm-field">
+        <label class="mm-label">tipped — mit válaszolna ő?</label>
+        <textarea class="mm-input" data-mm-guess maxlength="240" placeholder="..."></textarea>
+      </div>
+      <div class="mm-field">
+        <label class="mm-label">és te magad — mit válaszolnál?</label>
+        <textarea class="mm-input" data-mm-actual maxlength="240" placeholder="..."></textarea>
+      </div>
+      <button class="btn-primary" data-action="submit-mm">Beküldöm</button>
+    </div>
+  </section>
+</template>
+
+<!-- 12. MIT MONDANA · status (várunk a párodra / felfedem) -->
+<template id="screen-mm-status">
+  <section class="screen screen-modal">
+    <header class="modal-header">
+      <button class="back-btn" data-action="back" aria-label="vissza">
+        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <h3 class="modal-title">mit mondana a másik</h3>
+      <span></span>
+    </header>
+    <div class="modal-body">
+      <div class="mm-question" data-mm-question></div>
+      <div class="mm-status-row">
+        <div class="mm-status-dot is-done"></div>
+        <span class="mm-status-text" data-mm-self-status>elküldted ✓</span>
+      </div>
+      <div class="mm-status-row" data-mm-partner-row>
+        <div class="mm-status-dot" data-mm-partner-dot></div>
+        <span class="mm-status-text" data-mm-partner-status></span>
+      </div>
+      <button class="btn-primary" data-action="reveal-mm" data-mm-reveal-btn disabled>Felfedem</button>
+    </div>
+  </section>
+</template>
+
+<!-- 13. MIT MONDANA · reveal (4 válasz + jegyzet + napló) -->
+<template id="screen-mm-reveal">
+  <section class="screen screen-modal">
+    <header class="modal-header">
+      <button class="back-btn" data-action="back" aria-label="vissza">
+        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <h3 class="modal-title">felfedés</h3>
+      <span></span>
+    </header>
+    <div class="modal-body">
+      <div class="mm-question" data-mm-question></div>
+
+      <div class="mm-reveal-block">
+        <div class="mm-reveal-label">ő gondolta hogy te:</div>
+        <div class="mm-reveal-text" data-mm-partner-guess></div>
+        <div class="mm-reveal-label-secondary">valójában te:</div>
+        <div class="mm-reveal-text mm-reveal-actual" data-mm-self-actual></div>
+      </div>
+
+      <div class="mm-reveal-block">
+        <div class="mm-reveal-label">te gondoltad hogy ő:</div>
+        <div class="mm-reveal-text" data-mm-self-guess></div>
+        <div class="mm-reveal-label-secondary">valójában ő:</div>
+        <div class="mm-reveal-text mm-reveal-actual" data-mm-partner-actual></div>
+      </div>
+
+      <div class="mm-note-section" data-mm-note-section>
+        <p class="modal-hint">egy mondat erről? — opcionális</p>
+        <textarea class="note-input" data-mm-note maxlength="240" placeholder="..."></textarea>
+        <button class="btn-primary" data-action="save-mm-note">Mentem a naplóba</button>
+      </div>
+      <div class="mm-note-saved" data-mm-note-saved hidden>
+        <div class="mm-note-saved-text" data-mm-saved-note-text></div>
+      </div>
+    </div>
+  </section>
+</template>
+<template id="screen-settings">
+  <section class="screen screen-settings screen-modal">
+    <header class="modal-header">
+      <button class="back-btn" data-action="back" aria-label="vissza">
+        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <h3 class="modal-title">beállítások</h3>
+      <span></span>
+    </header>
+    <div class="modal-body">
+      <div class="settings-section">
+        <label class="settings-label">Csillám neve</label>
+        <input type="text" class="settings-input" data-rename-input maxlength="24" placeholder="pl. Csillám">
+        <button class="btn-ghost" data-action="save-pici-name">átnevezés</button>
+      </div>
+
+      <div class="settings-section">
+        <label class="settings-label">Csillám kora</label>
+        <p class="settings-text" data-pici-age></p>
+      </div>
+
+      <div class="settings-section">
+        <label class="settings-label">Téma</label>
+        <div class="theme-row">
+          <button class="pill" data-theme-pick="auto">automatikus</button>
+          <button class="pill" data-theme-pick="light">világos</button>
+          <button class="pill" data-theme-pick="dark">sötét</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <label class="settings-label">Mit mondana pool</label>
+        <p class="pool-status" data-pool-status="mitmondana"></p>
+        <div class="pool-row">
+          <input type="file" data-pool-upload="mitmondana" accept=".txt,text/plain" hidden>
+          <button class="btn-ghost" data-action="upload-pool" data-pool-type="mitmondana">feltöltés</button>
+          <button class="btn-ghost" data-action="copy-pool-prompt" data-pool-type="mitmondana">prompt másolása</button>
+          <button class="btn-ghost btn-danger" data-action="reset-pool" data-pool-type="mitmondana" hidden>visszaállítás</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <label class="settings-label">Mai feladat pool</label>
+        <p class="pool-status" data-pool-status="feladatok"></p>
+        <div class="pool-row">
+          <input type="file" data-pool-upload="feladatok" accept=".txt,text/plain" hidden>
+          <button class="btn-ghost" data-action="upload-pool" data-pool-type="feladatok">feltöltés</button>
+          <button class="btn-ghost" data-action="copy-pool-prompt" data-pool-type="feladatok">prompt másolása</button>
+          <button class="btn-ghost btn-danger" data-action="reset-pool" data-pool-type="feladatok" hidden>visszaállítás</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <label class="settings-label">Mai kérdés pool</label>
+        <p class="pool-status" data-pool-status="kerdesek"></p>
+        <div class="pool-row">
+          <input type="file" data-pool-upload="kerdesek" accept=".txt,text/plain" hidden>
+          <button class="btn-ghost" data-action="upload-pool" data-pool-type="kerdesek">feltöltés</button>
+          <button class="btn-ghost" data-action="copy-pool-prompt" data-pool-type="kerdesek">prompt másolása</button>
+          <button class="btn-ghost btn-danger" data-action="reset-pool" data-pool-type="kerdesek" hidden>visszaállítás</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <label class="settings-label">Visszaállítás</label>
+        <p class="settings-hint">törli a helyi állapotot — újra kell párosítanotok. A Supabase adatok érintetlenek maradnak.</p>
+        <button class="btn-ghost btn-danger" data-action="reset-all">visszaállítás</button>
+      </div>
+    </div>
   </section>
 </template>
 

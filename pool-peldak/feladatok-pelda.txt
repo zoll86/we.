@@ -1,0 +1,10 @@
+# we. mai feladat pool — példa
+# Formátum: szöveg | időpont | költség
+# időpont: reggel | este | hazaerkezes | barmikor
+# költség: ingyenes | kicsi | kozepes
+
+Vegyél egy szál virágot hazafelé jövet | hazaerkezes | kicsi
+Mondj egy konkrét köszönöm-öt a párodnak | barmikor | ingyenes
+Készíts neki kávét reggel | reggel | ingyenes
+Tedd el a párod cipőjét helyére | barmikor | ingyenes
+Hagyj neki egy cetlit a tükörre | reggel | ingyenes

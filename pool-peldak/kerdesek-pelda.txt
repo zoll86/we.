@@ -1,0 +1,18 @@
+# we. mai kérdés pool — példa
+# Szintek: [KONNYU] / [KOZEPES] / [MELY]
+# Egy kérdés / sor a megfelelő szekcióban.
+
+[KONNYU]
+Mi volt ma a legjobb pillanatod?
+Melyik gyerekkori étel a kedvenced?
+Mit reggeliznél holnap álmodban?
+
+[KOZEPES]
+Mit szerettél bennem amikor először találkoztunk?
+Mit szeretnél, ha többet kérdeznék tőled?
+Mit jelent neked az „együtt" — egy mondatban?
+
+[MELY]
+Mitől félsz leginkább velem kapcsolatban?
+Mit nem bocsátottál meg magadnak?
+Mit szeretnél hogy tudjak rólad, amit még nem tudok?

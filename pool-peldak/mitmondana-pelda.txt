@@ -1,0 +1,9 @@
+# we. mit mondana pool — példa
+# Egy kérdés / sor.
+# A # kezdetű sorok és üres sorok kihagyva.
+
+Mit kérnél most a hold-istennőtől?
+Ha most teleportálhatnál egy hétre, hova mennél?
+Egy szuperképesség, amit szívesen kapnál — milyen?
+Egy étterem, ahol egész életedben ehetnél — melyik?
+Egy emlék rólam, ami megmaradt benned — mi lenne?

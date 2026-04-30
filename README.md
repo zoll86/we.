@@ -2,135 +2,163 @@
 
 > Egy közös tér kettőtöknek.
 
-Egy minimalista PWA pároknak: napi mikro-feladatok, suttogások, közös rituálék — egy „we." márkanév alatt. Telefonra installálva, mintha sajátos app lenne.
+**Aktuális verzió:** v0.6 — Saját pool feltöltés (Beállításokban), kézzel állítható téma (világos / sötét / automatikus), kibővített Mit mondana pool (50 kérdés, mix játékos + komoly).
 
-**Aktuális verzió:** v0.2 — Supabase szinkron a két telefon között.
-**Még nincs benne (v0.3+):** Suttogások archív, Vágyak, Mai kérdés, csapat-funkciók.
+## ⚙️ V0.6 frissítés (ha most v0.5-ről jössz)
 
-## Stack
+### 1. SQL migráció — egy új mező a pairs táblába
 
-- Vanilla HTML/CSS/JS PWA (semmi build step, semmi framework)
-- Supabase (postgres + realtime) — két telefon közötti szinkron
-- localStorage gyors-cache + offline mód
-- GitHub Pages hosting
-
-## ⚙️ V0.2 telepítési lépések (ha most frissítesz v0.1-ről)
-
-### 1. Töltsd ki a `config.js`-t a saját Supabase kulcsokkal
-
-A `config.js` fájl így néz ki:
-
-```js
-export const config = {
-  SUPABASE_URL: 'YOUR_SUPABASE_URL_HERE',
-  SUPABASE_ANON_KEY: 'YOUR_SUPABASE_ANON_KEY_HERE',
-};
-```
-
-Cseréld ki a két placeholder-t a sajátjaidra. A Supabase Dashboard → **Settings** → **API** menüben találod:
-- **Project URL** → ide az `SUPABASE_URL` helyére
-- **Project API keys** → `anon public` → ide az `SUPABASE_ANON_KEY` helyére
-
-⚠️ Az anon kulcs a Supabase szerint biztonságos kliens-oldalra. A v0.2 séma viszont nyitott — **ne adj hozzá érzékeny adatot, és ne tedd publikus URL-en hashtag-elve**.
-
-### 2. Frissítsd a Supabase sémát egy ALTER paranccsal
-
-A v0.1 sémából hiányzott a `pairs` tábla a realtime publikációból. Pótold:
+Supabase → SQL Editor → New query:
 
 ```sql
-alter publication supabase_realtime add table pairs;
+alter table pairs add column if not exists custom_pools jsonb default '{}'::jsonb;
 ```
 
-(A többi tábla már benne van.) Ha az ALTER hibát ír „already member of publication", azzal nincs gond — csak ezt jelenti, hogy már be van állítva.
+Ez minden — a custom_pools tárolja mindkettőtök közös pool-jait, és a meglévő realtime feliratkozás miatt automatikusan szinkronizálódik.
 
-### 3. Push GitHub-ra
+### 2. Fájlok cseréje a repo-ban
+
+Cserélendő:
+- `app.js`
+- `index.html`
+- `style.css`
+- `lib/sync.js`
+- `data/mitmondana.js` (kibővítve 30 → 50 kérdés)
+- `sw.js` (verzió bumpolva)
+- `supabase-schema.sql`
+- `README.md`
+
+Új mappa: `pool-peldak/` — három példa-fájl, szabad mintaként.
+
+A `config.js`, `data/feladatok.js`, `data/kerdesek.js` változatlan.
 
 ```bash
 git add .
-git commit -m "we. v0.2 — Supabase sync"
+git commit -m "we. v0.6 — saját pool feltöltés + téma-választó"
 git push
 ```
 
-GitHub Pages automatikusan újra-deployolja, pár perc.
+A localStorage kulcs verziót váltottam (`we-state-v5` → `we-state-v6`), tehát mindkét telefonon **újra kell párosítani** induláskor (vagy `__we.reset()`).
 
-### 4. A telefonokon
+## Mi az új (v0.6)
 
-- A korábban telepített PWA frissül magától (de ha makacskodik, töröld a böngészőcache-t)
-- Lépjetek vissza az üdvözlő képernyőre (a böngésző DevTools konzolban: `__we.reset()`) — vagy törölje mindkettőtök a localStorage-ot
-- **Először az egyik csinál „új párost"** (kapja a kódot)
-- **A másik beírja a kódot** — automatikusan átugrotok a naming képernyőre együtt
-- Az egyik elnevezi Csillámot, a másik telefonján is megjelenik
-- Innentől a Suttogó és a Mai feladat-jelzések valós időben szinkronizálódnak
+### Téma-választó a Beállításokban
+A telefon-rendszerbeállítás helyett most **kézzel** is állíthatjátok: automatikus / világos / sötét. A választás telefon-specifikus (mindkettőtöknél külön), és túléli az újratöltést.
 
-## Mi működik valós időben (v0.2)
+### Mit mondana pool kibővítve 50-re
+30 + 20 új kérdés, sokkal több játékos / képzeletbeli kérdéssel:
+- *„Ha varázspálcád lenne 5 percig, mit csinálnál vele?"*
+- *„Egy tárgy nálunk otthon, ami szerinted titokban él?"*
+- *„Egy szín, amit a tehén után neveznél el?"*
+- *„Egy hely a Földön, ahol szerinted ufót láthatsz?"*
+- *„Egy varázsige, amit ráolvasnál rám reggel?"*
 
-| Ami | Hogy szinkron |
+### 🎉 Saját pool feltöltés (a nagy újdonság)
+
+A Beállításokban most három saját pool-szakasz van:
+1. **Mit mondana pool**
+2. **Mai feladat pool**
+3. **Mai kérdés pool**
+
+Mindhez tartozik:
+- **Feltöltés** gomb → válassz ki egy `.txt` fájlt
+- **Prompt másolása** gomb → másold ki a kész AI-promptot, és bárhol generáltathatod (ChatGPT / Gemini / Claude / Mistral / etc.)
+- **Visszaállítás** gomb (csak ha van saját pool) → visszadob az eredetire
+
+A feltöltött pool **mindkét telefonon ugyanaz** — a Supabase-en keresztül szinkronizálódik. Tehát ha te feltöltesz egy újat, a párodé is automatikusan átáll.
+
+A pool azonnal hatályba lép — a következő napi feladat / kérdés / mit mondana már a sajátodból sorsolódik.
+
+#### A workflow
+
+1. Beállításokban → tap a „prompt másolása"-ra a kívánt típusnál
+2. Megnyitsz egy AI-t (ChatGPT / Gemini / Claude / akármit), beillesztesz, küld
+3. Megkapod a 30-100 elemes pool-t a megfelelő formátumban
+4. Mented egy `.txt` fájlba (pl. „Mentés másként" → enter.txt)
+5. Vissza a Beállításokba → „feltöltés" → válaszd ki a fájlt
+6. Kész — a pool hatályba lép, és a párod telefonja is frissül
+
+#### A formátumok
+
+**Mit mondana** — legegyszerűbb. Egy kérdés / sor.
+```
+# we. mit mondana pool
+# Egy kérdés / sor.
+
+Mit kérnél most a hold-istennőtől?
+Ha most teleportálhatnál egy hétre, hova mennél?
+[stb.]
+```
+
+**Mai feladat** — három részre osztva | jellel.
+```
+# we. mai feladat pool
+# Formátum: szöveg | időpont | költség
+# időpont: reggel | este | hazaerkezes | barmikor
+# költség: ingyenes | kicsi | kozepes
+
+Vegyél egy szál virágot hazafelé jövet | hazaerkezes | kicsi
+Mondj egy konkrét köszönöm-öt a párodnak | barmikor | ingyenes
+[stb.]
+```
+
+**Mai kérdés** — három szint, [KONNYU] [KOZEPES] [MELY] szekciókkal.
+```
+# we. mai kérdés pool
+# Szintek: [KONNYU] / [KOZEPES] / [MELY]
+
+[KONNYU]
+Mi volt ma a legjobb pillanatod?
+[stb.]
+
+[KOZEPES]
+Mit szerettél bennem amikor először találkoztunk?
+[stb.]
+
+[MELY]
+Mitől félsz leginkább velem kapcsolatban?
+[stb.]
+```
+
+A `pool-peldak/` mappában mindháromnak ott van a példája.
+
+#### Hibakezelés
+
+Ha a fájl rossz formátumú, az app egy érthető hibát ír ki (pl. *„hibás időpont »reggelente« — érvényes: reggel, este, hazaerkezes, barmikor"*). A pool nem cserélődik le, az eredeti marad.
+
+Ha a saját pool kifogy (pl. minden Mit mondana kérdést felfedtetek), az első kérdéssel kezdődik újra a sorsolás — ez azonos a default pool viselkedésével.
+
+## Mi szinkron a két telefon között
+
+| Funkció | Mit csinál |
 |---|---|
-| **Párosítás** | Initiátor INSERT → joiner UPDATE → realtime ping → mindkét telefon naming-be ugrik |
-| **Csillám neve** | Update a `pairs.pici_name`-en → mindkettő látja |
-| **Suttogás** | Csak egy aktív lehet — INSERT új, DELETE régi, mindkét telefon frissül |
-| **Mai feladat teljesítése** | INSERT a `feladat_log`-ba, mindkét napló frissül |
+| Párosítás, Csillám neve, szint-választás | UPDATE pairs |
+| Suttogás (gyűjtődik) | INSERT whispers |
+| Mai feladat teljesítése | INSERT feladat_log |
+| Mai kérdés megbeszélése | INSERT kerdesek |
+| Vágy hozzáadása / beteljesítése | INSERT/UPDATE vagyak |
+| Mit mondana session + válaszok | INSERT mit_mondana_sessions + responses |
+| Mit mondana felfedés | UPDATE mit_mondana_sessions |
+| **Saját pool feltöltés / visszaállítás** | UPDATE pairs.custom_pools |
+| Téma-választás | csak helyileg (telefon-specifikus) |
 
-## Mi NEM szinkron (még)
+## Mi jön (v0.7)
 
-- A `Mai feladat` sorsolás — mindkettőtök a saját 133-as poolból kap napi feladatot. Ez szándékos: **mindenkinek a saját mikro-feladata van**.
-- A skip gomb — a saját készülékeden cseréli, párodét nem
-- A Naplónk → Vágyak / Suttogások / Kérdések fülek — még csak placeholder
+A halasztott „nagy csomag": **5 új csapat-funkció** a Mai választás keretbe:
+- **Hála-üzenet** — egy köszönet, Csillám viszi át
+- **Hangulat-megosztás** — gyors emoji, mindkettő látja a másikét
+- **20 másodperces ölelés** — beépített számláló + „megcsináltuk"
+- **„Rád gondolok"** — egy szív-jelzés a párodnak, bármikor küldhető
+- **Híd-jelzés** — „valamit szeretnék megbeszélni — segítenél elindítani?"
 
-## Ha nincs `config.js` kitöltve
+Mai választás napi sorsol egyet a 6 funkcióból (Mit mondana + 5 új).
 
-Az app lokális módban fut, fent egy korall/arany sávban kiírja: **„helyileg fut · Supabase nem konfigurálva"**.
+## Mi jön később
 
-## Fájl-struktúra
-
-```
-we/
-├── index.html              # belépő, az összes képernyő mint <template>
-├── style.css               # design system (light + dark auto)
-├── app.js                  # router, state, képernyő-handlerek
-├── config.js               # ⚠️ Supabase kulcsok IDE
-├── lib/
-│   └── sync.js             # Supabase kliens + sync logika
-├── data/
-│   └── feladatok.js        # 133 mikro-feladat
-├── assets/
-│   ├── icon-192.png
-│   └── icon-512.png
-├── manifest.webmanifest    # PWA manifest
-├── sw.js                   # service worker
-├── supabase-schema.sql     # adatbázis-séma
-├── .gitignore
-└── README.md
-```
-
-## Reset
-
-Ha vissza akarod állítani az állapotot a saját készülékeden:
-
-```js
-// böngésző DevTools konzolban:
-__we.reset()
-```
-
-Ha az adatbázist is törölni akarod (új teszt-pár):
-
-```sql
--- Supabase SQL Editor-ben:
-truncate pairs cascade;
-truncate whispers;
-truncate feladat_log;
-```
-
-## Mi jön (v0.3)
-
-1. **Mai kérdés** napi páros kérdés (3 szinten)
-2. **Naplónk Vágyak-fül** — közös bakancslista
-3. **Naplónk Suttogások-fül** — időrendi archív (a `whispers_archive` táblát kell hozzá létrehozni)
-4. **Naplónk Kérdések-fül** — megbeszélt válaszok
-5. **A 13 csapat-funkció** apránként (Mit mondana a másik?, Híd-jelzés, stb.)
-6. **Mélyvíz mód** — etikai dilemmák A/B/C/D válaszokkal
-7. **Pici evolúciós szakaszok** (baby → gyerek → tini → felnőtt)
-8. **Auth + szigorúbb RLS** — ha publikussá tesszük az appot
+- v0.8: Esti rítusok + presence (közös meditáció, magányos pillanat, élő status-dotok)
+- v0.9: Emlékek + idő-funkciók (Visszhang, Évforduló-szellem, Zenei időkapszula, Színes nap, Párhuzamos pillanat)
+- v0.10: Polish + Auth + szigorúbb RLS
+- v1.0+: Mélyvíz mód
 
 ---
 
