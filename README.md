@@ -2,56 +2,84 @@
 
 > Egy közös tér kettőtöknek.
 
-Egy minimalista PWA pároknak: napi mikro-feladatok, suttogások, közös rituálék — egy „we." márkanév alatt. A telefonra installálva, mintha sajátos app lenne.
+Egy minimalista PWA pároknak: napi mikro-feladatok, suttogások, közös rituálék — egy „we." márkanév alatt. Telefonra installálva, mintha sajátos app lenne.
 
-**Aktuális verzió:** v0.1 — alap-keret + üdvözlet + párosítás + érkezés + Mindennapok + Naplónk feladat-napló.
-**Még nincs benne (v0.2+):** Supabase real-time szinkron, Suttogások archív, Vágyak, Kérdések, „Mit mondana a másik?", többi 12 csapat-funkció.
+**Aktuális verzió:** v0.2 — Supabase szinkron a két telefon között.
+**Még nincs benne (v0.3+):** Suttogások archív, Vágyak, Mai kérdés, csapat-funkciók.
 
 ## Stack
 
-- **Vanilla HTML/CSS/JS** (semmi build step, semmi framework)
-- **PWA** (service worker, manifest — telefonra installálható)
-- **localStorage** v0.1-ben (helyi tárolás), **Supabase** v0.2-től
-- **GitHub Pages** hosting (statikus)
+- Vanilla HTML/CSS/JS PWA (semmi build step, semmi framework)
+- Supabase (postgres + realtime) — két telefon közötti szinkron
+- localStorage gyors-cache + offline mód
+- GitHub Pages hosting
 
-## Helyi futtatás
+## ⚙️ V0.2 telepítési lépések (ha most frissítesz v0.1-ről)
 
-Csak nyisd meg az `index.html`-t böngészőben. Vagy ha service worker is kell:
+### 1. Töltsd ki a `config.js`-t a saját Supabase kulcsokkal
 
-```bash
-# bármi statikus szerverrel
-python3 -m http.server 8000
-# nyisd: http://localhost:8000
+A `config.js` fájl így néz ki:
+
+```js
+export const config = {
+  SUPABASE_URL: 'YOUR_SUPABASE_URL_HERE',
+  SUPABASE_ANON_KEY: 'YOUR_SUPABASE_ANON_KEY_HERE',
+};
 ```
 
-## Deploy GitHub Pages-re
+Cseréld ki a két placeholder-t a sajátjaidra. A Supabase Dashboard → **Settings** → **API** menüben találod:
+- **Project URL** → ide az `SUPABASE_URL` helyére
+- **Project API keys** → `anon public` → ide az `SUPABASE_ANON_KEY` helyére
 
-1. Készíts egy új repo-t a GitHub-on (pl. `we-app`, lehet privát is)
-2. Push:
-   ```bash
-   cd we
-   git init
-   git add .
-   git commit -m "we. v0.1"
-   git branch -M main
-   git remote add origin git@github.com:USERNAME/we-app.git
-   git push -u origin main
-   ```
-3. GitHub Pages bekapcsolása:
-   - Repo → Settings → Pages
-   - Source: `Deploy from a branch`
-   - Branch: `main`, mappa: `/ (root)`
-   - Save
-4. Pár perc múlva elérhető lesz: `https://USERNAME.github.io/we-app/`
+⚠️ Az anon kulcs a Supabase szerint biztonságos kliens-oldalra. A v0.2 séma viszont nyitott — **ne adj hozzá érzékeny adatot, és ne tedd publikus URL-en hashtag-elve**.
 
-## Telepítés telefonra
+### 2. Frissítsd a Supabase sémát egy ALTER paranccsal
 
-A deployolt URL-t megnyitod a telefonon, aztán:
+A v0.1 sémából hiányzott a `pairs` tábla a realtime publikációból. Pótold:
 
-- **iPhone (Safari):** Megosztás → Hozzáadás a kezdőképernyőhöz
-- **Android (Chrome):** Menü → Telepítés / Hozzáadás a kezdőképernyőhöz
+```sql
+alter publication supabase_realtime add table pairs;
+```
 
-Onnantól mintha appként futna, app-ikonnal a kezdőképernyőn.
+(A többi tábla már benne van.) Ha az ALTER hibát ír „already member of publication", azzal nincs gond — csak ezt jelenti, hogy már be van állítva.
+
+### 3. Push GitHub-ra
+
+```bash
+git add .
+git commit -m "we. v0.2 — Supabase sync"
+git push
+```
+
+GitHub Pages automatikusan újra-deployolja, pár perc.
+
+### 4. A telefonokon
+
+- A korábban telepített PWA frissül magától (de ha makacskodik, töröld a böngészőcache-t)
+- Lépjetek vissza az üdvözlő képernyőre (a böngésző DevTools konzolban: `__we.reset()`) — vagy törölje mindkettőtök a localStorage-ot
+- **Először az egyik csinál „új párost"** (kapja a kódot)
+- **A másik beírja a kódot** — automatikusan átugrotok a naming képernyőre együtt
+- Az egyik elnevezi Csillámot, a másik telefonján is megjelenik
+- Innentől a Suttogó és a Mai feladat-jelzések valós időben szinkronizálódnak
+
+## Mi működik valós időben (v0.2)
+
+| Ami | Hogy szinkron |
+|---|---|
+| **Párosítás** | Initiátor INSERT → joiner UPDATE → realtime ping → mindkét telefon naming-be ugrik |
+| **Csillám neve** | Update a `pairs.pici_name`-en → mindkettő látja |
+| **Suttogás** | Csak egy aktív lehet — INSERT új, DELETE régi, mindkét telefon frissül |
+| **Mai feladat teljesítése** | INSERT a `feladat_log`-ba, mindkét napló frissül |
+
+## Mi NEM szinkron (még)
+
+- A `Mai feladat` sorsolás — mindkettőtök a saját 133-as poolból kap napi feladatot. Ez szándékos: **mindenkinek a saját mikro-feladata van**.
+- A skip gomb — a saját készülékeden cseréli, párodét nem
+- A Naplónk → Vágyak / Suttogások / Kérdések fülek — még csak placeholder
+
+## Ha nincs `config.js` kitöltve
+
+Az app lokális módban fut, fent egy korall/arany sávban kiírja: **„helyileg fut · Supabase nem konfigurálva"**.
 
 ## Fájl-struktúra
 
@@ -60,48 +88,50 @@ we/
 ├── index.html              # belépő, az összes képernyő mint <template>
 ├── style.css               # design system (light + dark auto)
 ├── app.js                  # router, state, képernyő-handlerek
+├── config.js               # ⚠️ Supabase kulcsok IDE
+├── lib/
+│   └── sync.js             # Supabase kliens + sync logika
 ├── data/
 │   └── feladatok.js        # 133 mikro-feladat
 ├── assets/
-│   ├── icon-192.png        # PWA ikonok
+│   ├── icon-192.png
 │   └── icon-512.png
 ├── manifest.webmanifest    # PWA manifest
-├── sw.js                   # service worker (offline cache)
-├── supabase-schema.sql     # adatbázis-séma (v0.2-höz)
+├── sw.js                   # service worker
+├── supabase-schema.sql     # adatbázis-séma
 ├── .gitignore
 └── README.md
 ```
 
-## Hogyan működik most (v0.1)
+## Reset
 
-- **Üdvözlet:** két gomb — új páros vagy csatlakozás
-- **Párosítás:** generál egy 6-jegyű kódot, vagy beírható egy kódot. **v0.1-ben helyileg tárolódik, nincs valódi szinkron** — szóval mindkettőtök külön „párosul" a saját készülékén
-- **Elnevezés:** közösen Csillámnak (vagy bárminek) elnevezitek
-- **Érkezés-animáció:** lefut minden belépéskor, tappal kihagyható (0.4s után)
-- **Mindennapok:** Suttogó (helyi) + Mai feladat (133-ból sorsolva, ↻ gombbal cserélhető) + Csillám figura
-- **Naplónk:** a Feladatok-fülön gyűlnek a teljesített feladatok időrendben
+Ha vissza akarod állítani az állapotot a saját készülékeden:
 
-**Reset:** ha vissza akarod állítani az állapotot, a böngésző konzolban: `__we.reset()`.
+```js
+// böngésző DevTools konzolban:
+__we.reset()
+```
 
-## Mi jön (v0.2)
+Ha az adatbázist is törölni akarod (új teszt-pár):
 
-1. **Supabase integráció** — két telefon közötti valódi szinkron
-2. **Suttogás real-time** — ha Virág küld egyet, a te telefonod azonnal mutatja
-3. **Naplónk Suttogások-fül** — időrendi archív
-4. **Mai kérdés** — napi páros kérdés (3 szinten)
-5. **Naplónk Vágyak-fül** — közös bakancslista
+```sql
+-- Supabase SQL Editor-ben:
+truncate pairs cascade;
+truncate whispers;
+truncate feladat_log;
+```
 
-## Mi jön (v0.3+)
+## Mi jön (v0.3)
 
-- A 13 csapat-funkció (Mit mondana a másik?, Híd-jelzés, stb.)
-- Mélyvíz mód (etikai dilemmák)
-- Pici evolúciós szakaszok (baby → gyerek → tini → felnőtt)
-- Évforduló-szellem, közös meditáció, stb.
-
-## Licenc
-
-Saját projekt, magán-használatra. Ha publikussá tesszük: MIT vagy hasonló.
+1. **Mai kérdés** napi páros kérdés (3 szinten)
+2. **Naplónk Vágyak-fül** — közös bakancslista
+3. **Naplónk Suttogások-fül** — időrendi archív (a `whispers_archive` táblát kell hozzá létrehozni)
+4. **Naplónk Kérdések-fül** — megbeszélt válaszok
+5. **A 13 csapat-funkció** apránként (Mit mondana a másik?, Híd-jelzés, stb.)
+6. **Mélyvíz mód** — etikai dilemmák A/B/C/D válaszokkal
+7. **Pici evolúciós szakaszok** (baby → gyerek → tini → felnőtt)
+8. **Auth + szigorúbb RLS** — ha publikussá tesszük az appot
 
 ---
 
-Bármilyen kérdés, csak szólj.
+Bármi kérdés / hiba: szólj.

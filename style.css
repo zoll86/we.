@@ -848,6 +848,29 @@ input, textarea {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   OFFLINE BANNER (lokális mód jelzés)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.offline-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: rgba(187, 89, 62, 0.92);
+  color: #FFF;
+  padding: 6px 12px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-align: center;
+  z-index: 50;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+@media (prefers-color-scheme: dark) {
+  .offline-banner { background: rgba(212, 169, 87, 0.92); color: #1A1714; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    TOAST
    ═══════════════════════════════════════════════════════════════════════ */
 

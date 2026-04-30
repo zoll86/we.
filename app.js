@@ -1,36 +1,34 @@
 /* ═══════════════════════════════════════════════════════════════════════
    we. — fő alkalmazás
-   v0.1 · helyi tárolás (localStorage), Supabase később
+   v0.2 · Supabase szinkronnal (visszaesik lokális módba ha nincs konfig)
    ═══════════════════════════════════════════════════════════════════════ */
 
 import { feladatok } from './data/feladatok.js';
+import * as sync from './lib/sync.js';
 
 // ─── State ──────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'we-state-v1';
+const STORAGE_KEY = 'we-state-v2';
 
 const defaultState = {
-  // párosítás
+  myMemberId: null,
   paired: false,
-  pairCode: null,        // a saját 6-jegyű kódom (initiátorként)
-  partnerCode: null,     // a párom kódja (joinerként amit beírtam)
-  isInitiator: null,     // én generáltam a kódot, vagy beírtam
-  // Csillám
+  pairId: null,
+  pairCode: null,
+  partnerMemberId: null,
+  isInitiator: null,
   piciName: null,
-  piciStage: 'baby',     // baby | gyerek | tini | felnott
+  piciStage: 'baby',
   piciBornAt: null,
-  // suttogó (csak helyi most, Supabase később)
-  whisper: null,         // { text, from, sentAt }
-  // mai feladat
-  todayTask: null,       // { id, text, kategoria, drawnAt }
+  whisper: null,
+  todayTask: null,
   todayTaskDoneAt: null,
-  // napló
-  feladatLog: [],        // [{taskId, text, doneAt, note?, by}]
-  // egyéb
+  feladatLog: [],
   hasSeenArrival: false,
 };
 
 let state = loadState();
+let syncReady = false;
 
 function loadState() {
   try {
@@ -55,8 +53,11 @@ function setState(patch) {
   saveState();
 }
 
-// dev: konzolban elérhető a state
-window.__we = { state: () => state, reset: resetAll };
+window.__we = {
+  state: () => state,
+  reset: resetAll,
+  syncReady: () => syncReady,
+};
 
 function resetAll() {
   localStorage.removeItem(STORAGE_KEY);
@@ -64,7 +65,146 @@ function resetAll() {
   navigate('welcome');
 }
 
-// ─── Router ─────────────────────────────────────────────────────────────
+// ─── Member ID ─────────────────────────────────────────────────────────
+
+function ensureMemberId() {
+  if (!state.myMemberId) {
+    const id = (crypto.randomUUID && crypto.randomUUID()) ||
+               'm-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    setState({ myMemberId: id });
+  }
+  return state.myMemberId;
+}
+
+// ─── Sync callbacks (realtime események) ──────────────────────────────
+
+const syncCallbacks = {
+  onConnected() {
+    console.log('[sync] csatlakozva');
+  },
+
+  onPairUpdate(pair) {
+    // member_b megjelent → joiner csatlakozott (initiátor szempontja)
+    if (state.isInitiator && pair.member_b && !state.paired) {
+      setState({
+        paired: true,
+        partnerMemberId: pair.member_b,
+      });
+      toast('csatlakozott ❤');
+      navigate('naming');
+    }
+    // pici_name frissült (a párod nevezte el)
+    if (pair.pici_name && pair.pici_name !== state.piciName) {
+      setState({
+        piciName: pair.pici_name,
+        piciBornAt: state.piciBornAt || Date.now(),
+      });
+      if (currentScreen === 'naming') {
+        navigate('arrival');
+      }
+      if (currentScreen === 'home') {
+        const nameEl = app.querySelector('[data-pici-name]');
+        if (nameEl) nameEl.textContent = pair.pici_name;
+      }
+    }
+  },
+
+  onWhisper(whisper) {
+    const isFromMe = whisper.from_member === state.myMemberId;
+    setState({
+      whisper: {
+        text: whisper.text,
+        from: isFromMe ? 'self' : 'partner',
+        sentAt: new Date(whisper.sent_at).getTime(),
+      },
+    });
+    if (currentScreen === 'home') renderWhisper();
+    if (!isFromMe) toast('új suttogás ❤');
+  },
+
+  onFeladatDone(entry) {
+    const isFromMe = entry.done_by === state.myMemberId;
+    if (!isFromMe) {
+      setState({
+        feladatLog: [
+          ...state.feladatLog,
+          {
+            taskId: entry.task_id,
+            text: entry.task_text,
+            doneAt: new Date(entry.done_at).getTime(),
+            by: 'partner',
+            note: entry.note,
+          },
+        ],
+      });
+      toast(`${state.piciName || 'a párod'}: csinált egyet ❤`);
+    }
+    if (currentScreen === 'journal') renderJournalTab('feladatok');
+  },
+};
+
+// ─── Inicializáció ─────────────────────────────────────────────────────
+
+async function init() {
+  if (sync.isConfigured()) {
+    syncReady = await sync.connect();
+    if (syncReady && state.pairId) {
+      try {
+        await hydrateFromServer();
+        sync.subscribeToPair(state.pairId, syncCallbacks);
+      } catch (err) {
+        console.error('[sync] hidratálás hiba:', err);
+      }
+    }
+  }
+  if (!sync.isConfigured()) {
+    showOfflineBanner();
+  }
+  navigate(startupScreen());
+}
+
+async function hydrateFromServer() {
+  if (!state.pairId) return;
+  const pair = await sync.loadPair(state.pairId);
+  if (pair && pair.pici_name) {
+    setState({ piciName: pair.pici_name });
+  }
+  const whisper = await sync.loadCurrentWhisper(state.pairId);
+  if (whisper) {
+    setState({
+      whisper: {
+        text: whisper.text,
+        from: whisper.from_member === state.myMemberId ? 'self' : 'partner',
+        sentAt: new Date(whisper.sent_at).getTime(),
+      },
+    });
+  } else {
+    setState({ whisper: null });
+  }
+  const log = await sync.loadFeladatLog(state.pairId);
+  setState({
+    feladatLog: log.map(e => ({
+      taskId: e.task_id,
+      text: e.task_text,
+      doneAt: new Date(e.done_at).getTime(),
+      by: e.done_by === state.myMemberId ? 'self' : 'partner',
+      note: e.note,
+    })).reverse(),
+  });
+}
+
+function showOfflineBanner() {
+  let banner = document.getElementById('offline-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'offline-banner';
+    banner.className = 'offline-banner';
+    banner.textContent = 'helyileg fut · Supabase nem konfigurálva';
+    document.body.appendChild(banner);
+  }
+}
+
+// ─── Router ────────────────────────────────────────────────────────────
 
 const app = document.getElementById('app');
 let currentScreen = null;
@@ -77,16 +217,12 @@ function navigate(screenId, opts = {}) {
   }
   app.replaceChildren(tpl.content.cloneNode(true));
   currentScreen = screenId;
-
-  // képernyő-specifikus binding-ok
   const bind = screenBindings[screenId];
   if (bind) bind(opts);
-
   window.scrollTo(0, 0);
 }
 
 function back() {
-  // egyszerű vissza-logika, később bővíthető
   if (currentScreen === 'pair-create' || currentScreen === 'pair-join') {
     navigate('welcome');
   } else if (currentScreen === 'whisper-compose') {
@@ -98,23 +234,16 @@ function back() {
   }
 }
 
-// ─── Inicializáció: melyik képernyő legyen az első ──────────────────
-
 function startupScreen() {
-  if (!state.paired || !state.piciName) {
-    return 'welcome';
-  }
-  if (!state.hasSeenArrival) {
-    return 'arrival';
-  }
-  return 'arrival'; // a kérés szerint MINDEN belépéskor lefut
+  if (!state.paired || !state.piciName) return 'welcome';
+  return 'arrival';
 }
 
-// ─── Pici figure renderelése (SVG inline) ─────────────────────────────
+// ─── Pici figura renderelés ────────────────────────────────────────────
 
 function renderPici(target, size = 64) {
   if (!target) return;
-  const svg = `
+  target.innerHTML = `
     <svg width="${size}" height="${size * 76 / 60}" viewBox="-30 -30 60 76" aria-hidden="true">
       <ellipse cx="0" cy="44" rx="22" ry="3.5" fill="rgba(0,0,0,0.10)"/>
       <g class="pici-bob">
@@ -144,35 +273,24 @@ function renderPici(target, size = 64) {
       </style>
     </svg>
   `;
-  target.innerHTML = svg;
 }
-
-// ─── Csillagok érkezés-képernyőhöz ────────────────────────────────────
 
 function renderStars(container, count = 14) {
   if (!container) return;
-  const html = Array.from({ length: count }, () => {
-    const top = Math.random() * 100;
-    const left = Math.random() * 100;
-    const delay = Math.random() * 3;
-    return `<div class="star" style="top:${top}%;left:${left}%;animation-delay:${delay}s"></div>`;
-  }).join('');
-  container.innerHTML = html;
+  container.innerHTML = Array.from({ length: count }, () =>
+    `<div class="star" style="top:${Math.random()*100}%;left:${Math.random()*100}%;animation-delay:${Math.random()*3}s"></div>`
+  ).join('');
 }
 
-// ─── 6-jegyű kód generálása ───────────────────────────────────────────
+// ─── Pair code utils ───────────────────────────────────────────────────
 
 function generatePairCode() {
-  // kerüljük az ismétléseket és a 0-kal kezdődést
   let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += Math.floor(Math.random() * 10);
-  }
+  for (let i = 0; i < 6; i++) code += Math.floor(Math.random() * 10);
   return code;
 }
 
 function formatCode(code) {
-  // 472931 → "4 7 2  9 3 1" (vizuális szóközzel középen)
   if (!code || code.length !== 6) return '';
   const parts = code.split('');
   return parts.slice(0, 3).join('<span class="gap"></span>') +
@@ -180,7 +298,7 @@ function formatCode(code) {
          parts.slice(3).join('<span class="gap"></span>');
 }
 
-// ─── Mai feladat sorsolás ─────────────────────────────────────────────
+// ─── Mai feladat ───────────────────────────────────────────────────────
 
 function todayKey() {
   const d = new Date();
@@ -194,9 +312,7 @@ function ensureTodayTask() {
 }
 
 function drawNewTask(excludeId = null) {
-  const pool = excludeId
-    ? feladatok.filter(f => f.id !== excludeId)
-    : feladatok;
+  const pool = excludeId ? feladatok.filter(f => f.id !== excludeId) : feladatok;
   const pick = pool[Math.floor(Math.random() * pool.length)];
   setState({
     todayTask: { ...pick, day: todayKey() },
@@ -205,18 +321,11 @@ function drawNewTask(excludeId = null) {
 }
 
 function metaForTask(task) {
-  const parts = [];
-  if (task.ido && task.ido !== 'barmikor') {
-    const map = { reggel: 'reggel', este: 'este', hazaerkezes: 'hazafelé' };
-    parts.push(map[task.ido] || task.ido);
-  } else {
-    parts.push('bármikor');
-  }
-  parts.push(task.koltseg === 'ingyenes' ? 'ingyenes' : task.koltseg);
-  return parts.join(' · ');
+  const map = { reggel: 'reggel', este: 'este', hazaerkezes: 'hazafelé', barmikor: 'bármikor' };
+  return [map[task.ido] || 'bármikor', task.koltseg === 'ingyenes' ? 'ingyenes' : task.koltseg].join(' · ');
 }
 
-// ─── Toast ──────────────────────────────────────────────────────────────
+// ─── Toast ─────────────────────────────────────────────────────────────
 
 let toastTimer;
 function toast(msg, ms = 2400) {
@@ -237,40 +346,49 @@ function toast(msg, ms = 2400) {
 
 const screenBindings = {
 
-  welcome() {
-    // semmi extra — a delegált click handler kezeli a gombokat
-  },
+  welcome() {},
 
-  'pair-create'() {
-    // generáljunk egy új kódot, ha még nincs
-    if (!state.pairCode) {
-      setState({ pairCode: generatePairCode(), isInitiator: true });
+  async ['pair-create']() {
+    ensureMemberId();
+    if (!state.pairId) {
+      const code = generatePairCode();
+      if (syncReady) {
+        try {
+          const pair = await sync.createPair(state.myMemberId, code);
+          setState({
+            pairId: pair.id,
+            pairCode: pair.pair_code,
+            isInitiator: true,
+          });
+          sync.subscribeToPair(pair.id, syncCallbacks);
+        } catch (err) {
+          console.error('[create] hiba:', err);
+          toast('párkód készítése sikertelen — ellenőrizd a Supabase-t');
+          setState({ pairCode: code, isInitiator: true });
+        }
+      } else {
+        setState({ pairCode: code, isInitiator: true });
+      }
     }
     const codeEl = app.querySelector('[data-code]');
     if (codeEl) codeEl.innerHTML = formatCode(state.pairCode);
-
-    // DEV: gyors-skip — duplán tappolva a kódra párosítva folytat
-    codeEl.addEventListener('dblclick', () => {
-      setState({ paired: true });
-      navigate('naming');
-    });
   },
 
-  'pair-join'() {
+  ['pair-join']() {
+    ensureMemberId();
     const inputs = app.querySelectorAll('[data-code-input] .code-box');
+    const errorEl = app.querySelector('[data-error]');
     inputs[0].focus();
 
     inputs.forEach((input, i) => {
       input.addEventListener('input', e => {
-        // csak számokat
         e.target.value = e.target.value.replace(/[^0-9]/g, '');
         if (e.target.value && i < inputs.length - 1) {
           inputs[i + 1].focus();
         }
-        // ha mind 6 megvan, próbáljuk meg
         const code = Array.from(inputs).map(x => x.value).join('');
         if (code.length === 6) {
-          handleJoinAttempt(code);
+          tryJoin(code, errorEl, inputs);
         }
       });
       input.addEventListener('keydown', e => {
@@ -288,20 +406,17 @@ const screenBindings = {
   },
 
   arrival() {
-    // csillagok
     renderStars(app.querySelector('.stars'));
-    // név megjelenítése
     const nameEl = app.querySelector('[data-pici-name]');
     if (nameEl) nameEl.textContent = state.piciName || 'Csillám';
-    // automatikus átmenet, ha nem skippelt
+
     const autoTimer = setTimeout(() => {
-      if (currentScreen === 'arrival') {
-        finishArrival();
-      }
+      if (currentScreen === 'arrival') finishArrival();
     }, 5400);
-    // skip threshold: 0.4s után tappolva ugorhat
+
     let canSkip = false;
     setTimeout(() => { canSkip = true; }, 400);
+
     const screen = app.querySelector('.screen-arrival');
     screen.addEventListener('click', () => {
       if (canSkip && currentScreen === 'arrival') {
@@ -312,18 +427,14 @@ const screenBindings = {
   },
 
   home() {
-    // Csillám figura
     renderPici(app.querySelector('[data-pici-figure]'));
-    // név
     app.querySelector('[data-pici-name]').textContent = state.piciName || 'Csillám';
-    // mai feladat
     ensureTodayTask();
     renderTask();
-    // suttogó
     renderWhisper();
   },
 
-  'whisper-compose'() {
+  ['whisper-compose']() {
     const input = app.querySelector('[data-whisper-input]');
     const counter = app.querySelector('[data-counter]');
     if (state.whisper && state.whisper.from === 'self') {
@@ -338,32 +449,65 @@ const screenBindings = {
 
   journal() {
     renderJournalTab('feladatok');
-    // tab váltás
     app.querySelectorAll('[data-tab]').forEach(tab => {
       tab.addEventListener('click', () => {
-        const tabId = tab.dataset.tab;
         app.querySelectorAll('[data-tab]').forEach(t => t.classList.toggle('is-active', t === tab));
-        renderJournalTab(tabId);
+        renderJournalTab(tab.dataset.tab);
       });
     });
   },
-
 };
 
 // ═══════════════════════════════════════════════════════════════════════
 // KISEGÍTŐ FÜGGVÉNYEK
 // ═══════════════════════════════════════════════════════════════════════
 
-function handleJoinAttempt(code) {
-  // v0.1: nincs valódi backend, simán elfogadjuk a kódot
-  // v0.2-ben: ellenőrizzük Supabase-ben, hogy létezik-e
-  setState({
-    paired: true,
-    partnerCode: code,
-    isInitiator: false,
-  });
-  toast('összekapcsolódtatok ✓');
-  setTimeout(() => navigate('naming'), 600);
+async function tryJoin(code, errorEl, inputs) {
+  if (errorEl) errorEl.hidden = true;
+
+  if (syncReady) {
+    try {
+      const result = await sync.joinPair(code, state.myMemberId);
+      if (!result) {
+        showJoinError('Ez a kód nem stimmel.', errorEl, inputs);
+        return;
+      }
+      if (result.error === 'already_paired') {
+        showJoinError('Ez a páros már össze van kapcsolva valakivel.', errorEl, inputs);
+        return;
+      }
+      setState({
+        paired: true,
+        pairId: result.pair.id,
+        partnerMemberId: result.partnerMemberId,
+        isInitiator: false,
+        piciName: result.pair.pici_name || null,
+      });
+      sync.subscribeToPair(result.pair.id, syncCallbacks);
+      toast('összekapcsolódtatok ✓');
+      setTimeout(() => navigate('naming'), 600);
+    } catch (err) {
+      console.error('[join] hiba:', err);
+      showJoinError('Hiba történt. Próbáld újra.', errorEl, inputs);
+    }
+  } else {
+    setState({
+      paired: true,
+      pairCode: code,
+      isInitiator: false,
+    });
+    toast('összekapcsolódtatok ✓');
+    setTimeout(() => navigate('naming'), 600);
+  }
+}
+
+function showJoinError(msg, errorEl, inputs) {
+  if (errorEl) {
+    errorEl.textContent = msg;
+    errorEl.hidden = false;
+  }
+  inputs.forEach(i => { i.value = ''; });
+  inputs[0].focus();
 }
 
 function finishArrival() {
@@ -388,7 +532,7 @@ function renderWhisper() {
     container.innerHTML = '<p class="whisper-empty">még nincs suttogás — küldj egyet</p>';
     return;
   }
-  const fromLabel = state.whisper.from === 'self' ? 'Te' : (state.whisper.fromName || 'Virág');
+  const fromLabel = state.whisper.from === 'self' ? 'Te' : 'ő';
   container.innerHTML = `
     <div class="whisper-display">
       <span class="whisper-from">${fromLabel}</span>
@@ -406,7 +550,6 @@ function escapeHtml(s) {
 function renderJournalTab(tabId) {
   const container = app.querySelector('[data-tab-content]');
   if (!container) return;
-
   if (tabId === 'feladatok') {
     container.innerHTML = renderFeladatokTab();
   } else if (tabId === 'suttogasok') {
@@ -422,7 +565,6 @@ function renderFeladatokTab() {
   if (!state.feladatLog || state.feladatLog.length === 0) {
     return '<div class="empty-state">Még nincs teljesített feladat. Az első Mai feladat után itt jelenik meg.</div>';
   }
-  // időcsoportokba szedjük
   const now = Date.now();
   const today = [], yesterday = [], thisWeek = [], earlier = [];
   for (const entry of [...state.feladatLog].reverse()) {
@@ -434,10 +576,7 @@ function renderFeladatokTab() {
     else earlier.push(entry);
   }
   const groups = [
-    ['MA', today],
-    ['TEGNAP', yesterday],
-    ['A HÉTEN', thisWeek],
-    ['KORÁBBAN', earlier],
+    ['MA', today], ['TEGNAP', yesterday], ['A HÉTEN', thisWeek], ['KORÁBBAN', earlier],
   ];
   return groups.filter(([, arr]) => arr.length > 0).map(([label, arr]) => `
     <div class="log-group">
@@ -448,7 +587,7 @@ function renderFeladatokTab() {
           <div class="log-content">
             <div class="log-text">${escapeHtml(entry.text)}</div>
             <div class="log-meta">
-              <span class="log-from-self">Te</span>
+              <span class="${entry.by === 'self' ? 'log-from-self' : 'log-from-partner'}">${entry.by === 'self' ? 'Te' : 'ő'}</span>
               · ${formatTime(entry.doneAt)}
             </div>
             ${entry.note ? `<div class="log-note">„${escapeHtml(entry.note)}"</div>` : ''}
@@ -473,51 +612,35 @@ function formatTime(timestamp) {
 // AKCIÓK (delegált event handler)
 // ═══════════════════════════════════════════════════════════════════════
 
-document.addEventListener('click', e => {
+document.addEventListener('click', async e => {
   const actionEl = e.target.closest('[data-action]');
   if (!actionEl) return;
   const action = actionEl.dataset.action;
 
   switch (action) {
-    case 'pair-create':
-      navigate('pair-create');
-      break;
-
-    case 'pair-join':
-      navigate('pair-join');
-      break;
-
-    case 'back':
-      back();
-      break;
+    case 'pair-create': navigate('pair-create'); break;
+    case 'pair-join': navigate('pair-join'); break;
+    case 'back': back(); break;
 
     case 'naming-confirm': {
       const input = app.querySelector('[data-name]');
       const name = input.value.trim();
       if (!name) {
-        toast('adj nevet Csillámnak');
+        toast('adj nevet');
         input.focus();
         return;
       }
-      setState({
-        piciName: name,
-        piciBornAt: Date.now(),
-      });
+      setState({ piciName: name, piciBornAt: state.piciBornAt || Date.now() });
+      if (syncReady && state.pairId) {
+        await sync.setPiciName(state.pairId, name);
+      }
       navigate('arrival');
       break;
     }
 
-    case 'arrival-skip':
-      // a screen-binding kezeli
-      break;
-
-    case 'open-journal':
-      navigate('journal');
-      break;
-
-    case 'compose-whisper':
-      navigate('whisper-compose');
-      break;
+    case 'arrival-skip': break;
+    case 'open-journal': navigate('journal'); break;
+    case 'compose-whisper': navigate('whisper-compose'); break;
 
     case 'send-whisper': {
       const input = app.querySelector('[data-whisper-input]');
@@ -527,13 +650,11 @@ document.addEventListener('click', e => {
         return;
       }
       setState({
-        whisper: {
-          text,
-          from: 'self',
-          fromName: state.piciName ? 'Te' : 'Te',
-          sentAt: Date.now(),
-        },
+        whisper: { text, from: 'self', sentAt: Date.now() },
       });
+      if (syncReady && state.pairId) {
+        await sync.sendWhisper(state.pairId, state.myMemberId, text);
+      }
       toast('elküldve ✓');
       navigate('home');
       break;
@@ -550,19 +671,18 @@ document.addEventListener('click', e => {
     case 'task-done': {
       if (state.todayTaskDoneAt) return;
       const now = Date.now();
+      const task = state.todayTask;
       setState({
         todayTaskDoneAt: now,
         feladatLog: [
           ...state.feladatLog,
-          {
-            taskId: state.todayTask.id,
-            text: state.todayTask.text,
-            doneAt: now,
-            by: 'self',
-          },
+          { taskId: task.id, text: task.text, doneAt: now, by: 'self' },
         ],
       });
       renderTask();
+      if (syncReady && state.pairId) {
+        await sync.logTaskDone(state.pairId, state.myMemberId, task);
+      }
       toast('szép vagy ❤');
       break;
     }
@@ -573,9 +693,8 @@ document.addEventListener('click', e => {
 // INDÍTÁS
 // ═══════════════════════════════════════════════════════════════════════
 
-navigate(startupScreen());
+init();
 
-// Service worker regisztráció (PWA)
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(err => {

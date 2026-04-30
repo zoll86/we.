@@ -64,6 +64,7 @@ create table if not exists kerdesek (
 
 -- Engedélyezzük a realtime-ot a suttogásokon és a feladatokon
 -- (a Dashboard → Database → Replication menüben is be kell állítani)
+alter publication supabase_realtime add table pairs;
 alter publication supabase_realtime add table whispers;
 alter publication supabase_realtime add table feladat_log;
 alter publication supabase_realtime add table vagyak;

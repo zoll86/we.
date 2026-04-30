@@ -1,12 +1,14 @@
 // we. — service worker
 // alap offline cache, PWA telepíthetőséghez
 
-const CACHE = 'we-v0-1';
+const CACHE = 'we-v0-2';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
+  './config.js',
+  './lib/sync.js',
   './data/feladatok.js',
   './manifest.webmanifest',
 ];
@@ -28,7 +30,7 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // network-first JS/CSS frissítésre, fallback cache-re
+  // network-first: új kód előbb, fallback cache-re ha nincs net
   e.respondWith(
     fetch(e.request)
       .then(res => {
