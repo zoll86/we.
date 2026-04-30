@@ -1,0 +1,150 @@
+// 12 vezetett páros-meditáció a régi Pici appból
+// Mindnek van intro (a timer indulása előtt), phase-listája (időzített szakaszok),
+// és outro (a timer végén). A bell a fázisok határán szól + a végén.
+
+export const meditations = [
+  {
+    id: 'sync-breath',
+    title: 'Szinkron-légzés',
+    duration: 5,
+    source: 'Tantrikus eredetű · MBSR adaptáció',
+    intro: 'Üljetek egymással szemben, kényelmes pózban — térdetek érintkezhet. Csukjátok be a szemeteket.',
+    phases: [
+      { duration_sec: 120, text: 'Egyikőtök vezet: lélegezzen lassan, mélyen, kicsit hangosabban — a másik csak figyel és próbál ráhangolódni.' },
+      { duration_sec: 120, text: 'Cseréljetek: most a másik vezet 2 percig.' },
+      { duration_sec: 60, text: 'Az utolsó perc: együtt, közös tempóban — már nem vezet senki.' },
+    ],
+    outro: 'Lassan nyissátok ki a szemeteket.',
+  },
+  {
+    id: 'eye-gaze',
+    title: 'Szemkontaktus',
+    duration: 5,
+    source: 'Ősi tantrikus · modern coaching',
+    intro: 'Üljetek egymással szemben, közel — térdek érintkezhetnek. Nyissátok ki a szemeteket és nézzetek a másik BAL szemébe (csak az egyikbe).',
+    phases: [
+      { duration_sec: 300, text: 'Csendben, semmit nem mondva. Ne mosolyogjatok kötelezően. Hagyjátok az érzéseket jönni-menni.' },
+    ],
+    outro: 'Mondhattok egy mondatot ami felmerült.',
+  },
+  {
+    id: 'tonglen',
+    title: 'Tonglen — ajándékozó légzés',
+    duration: 8,
+    source: 'Tibeti buddhista (Pema Chödrön nyomán)',
+    intro: 'Üljetek egymás mellett vagy szemben. Csukott szem.',
+    phases: [
+      { duration_sec: 480, text: 'Belégzéskor "veszitek" a párotok valamilyen feszültségét, fáradtságát. Kilégzéskor "küldjétek" felé a nyugalmat, melegséget.' },
+    ],
+    outro: 'Nem tényleg "megszabadítani" volt a cél — az érzelmi figyelem nyitása.',
+  },
+  {
+    id: 'heart-touch',
+    title: 'Szív-érintés',
+    duration: 6,
+    source: 'Tantrikus alapú',
+    intro: 'Üljetek egymás mellett.',
+    phases: [
+      { duration_sec: 120, text: 'Egyikőtök tegye a tenyerét a másik szívére. A másik csukja be a szemét, érezze az érintést, a meleget, a szívritmust.' },
+      { duration_sec: 120, text: 'Cseréljetek.' },
+      { duration_sec: 120, text: 'Most mindkettőtök tenyere a másik szívén — érezzétek a kapcsolatot.' },
+    ],
+    outro: 'Lassan engedjétek el.',
+  },
+  {
+    id: 'metta',
+    title: 'Loving-kindness — egymásra',
+    duration: 8,
+    source: 'Buddhista metta (public domain)',
+    intro: 'Üljetek kényelmesen, csukott szem.',
+    phases: [
+      { duration_sec: 240, text: 'Belül ismételjétek lassan a párotokra: "Legyél boldog. Legyél egészséges. Legyél biztonságban. Legyél békében." Egy mondat egy lélegzet.' },
+      { duration_sec: 240, text: 'Most fordítsátok magatokra — ugyanazokat magatokra.' },
+    ],
+    outro: 'A meditáció a kívánság gyakorlása — nem az érzés erőszakolása.',
+  },
+  {
+    id: 'body-scan',
+    title: 'Test-pásztázás közösen',
+    duration: 10,
+    source: 'MBSR (Kabat-Zinn) saját szöveggel',
+    intro: 'Feküdjetek le egymás mellett, kéz a kézben vagy ölelkezve. Csukott szem. Egyikőtök hangosan vezeti, halkan.',
+    phases: [
+      { duration_sec: 600, text: 'Érezzétek a lábujjakat, a talpat, a bokát... haladjatok lassan felfelé a testben, megállva minden résznél.' },
+    ],
+    outro: 'Cél: együtt feltérképezni a testet, érezni mi van benne ma.',
+  },
+  {
+    id: 'back-to-back',
+    title: 'Háttal háttnak',
+    duration: 7,
+    source: 'Tantrikus',
+    intro: 'Üljetek a földön háttal egymásnak, gerinceitek érintkeznek. Csukott szem.',
+    phases: [
+      { duration_sec: 180, text: 'Csak figyeljétek a saját légzéseteket.' },
+      { duration_sec: 180, text: 'Most hangoljátok rá a párotok légzésére — érezzétek a hátán keresztül.' },
+      { duration_sec: 60, text: 'Az utolsó perc: együtt lélegezzetek, közös ritmusban.' },
+    ],
+    outro: 'Lassan engedjétek el a hátakat.',
+  },
+  {
+    id: 'walking',
+    title: 'Sétáló meditáció',
+    duration: 10,
+    source: 'Thich Nhat Hanh nyomán (public domain)',
+    intro: 'Sétáljatok lassan egymás mellett — akár egy szobányi területen. Beszéd nélkül. Egy lépés egy lélegzet.',
+    phases: [
+      { duration_sec: 300, text: 'Mindenki a saját testére és lépésére figyel.' },
+      { duration_sec: 300, text: 'Próbáljatok együtt lépni — ugyanabban a tempóban, ugyanabban a ritmusban.' },
+    ],
+    outro: 'Ha valaki tévedt, csak finoman szinkronizáljatok újra.',
+  },
+  {
+    id: 'still-hug',
+    title: 'Tartózkodó ölelés',
+    duration: 5,
+    source: 'Schnarch párterápia, saját adaptáció',
+    intro: 'Álljatok egymással szemben. Öleljétek meg egymást.',
+    phases: [
+      { duration_sec: 300, text: 'Tartsátok 5 percig — semmit ne csináljatok közben. Csak álljatok, figyeljétek a saját testet, a saját légzéseteket.' },
+    ],
+    outro: 'Ne engedjétek el az időnél előbb.',
+  },
+  {
+    id: 'gratitude',
+    title: 'Hála-meditáció a párnak',
+    duration: 5,
+    source: 'Emmons (pozitív pszichológia)',
+    intro: 'Üljetek kényelmesen, csukott szem. Mindkettőtök gondoljon (nem hangosan) 5 dologra a párotokról ami most hálával tölt el.',
+    phases: [
+      { duration_sec: 60, text: '1. dolog. Lassan érezve.' },
+      { duration_sec: 60, text: '2. dolog.' },
+      { duration_sec: 60, text: '3. dolog.' },
+      { duration_sec: 60, text: '4. dolog.' },
+      { duration_sec: 60, text: '5. dolog — vagy térjetek vissza az 1-hez és érezzétek újra.' },
+    ],
+    outro: 'Ne magyarázzátok meg magatoknak, csak hagyjátok az érzést.',
+  },
+  {
+    id: 'silent-sit',
+    title: 'Csendes együtt-ülés',
+    duration: 10,
+    source: 'Zen-szellemű',
+    intro: 'Üljetek egymással szemben, vagy egymás mellett. Nincs feladat — csak ülés csendben.',
+    phases: [
+      { duration_sec: 600, text: 'Ne meditáljatok semmire, ne mondjatok semmit. Ha gondolataitok jönnek, hagyjátok elmenni.' },
+    ],
+    outro: 'Az első 3 perc tűnhet hosszúnak, de utána valami megnyílik.',
+  },
+  {
+    id: 'wave-breath',
+    title: 'Hullám-légzés',
+    duration: 8,
+    source: 'Tantrikus szinkron-légzés variáció',
+    intro: 'Feküdjetek egymás mellett, oldalt fordulva, szemben egymással. Kezeitek a másik hasán.',
+    phases: [
+      { duration_sec: 480, text: 'ELLENTÉTESRE szinkronizáljátok a légzést: amikor egyikőtök belélegezzen, a másik kilélegez. Mintha egy hullám lennétek.' },
+    ],
+    outro: 'Ha eltévedtek, csak figyeljétek a másik kezét és újraszinkronizáljatok.',
+  },
+];

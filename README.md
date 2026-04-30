@@ -2,122 +2,132 @@
 
 > Egy közös tér kettőtöknek.
 
-**Aktuális verzió:** v0.7 — 5 új csapat-funkció a Mai választás keretbe (Hála-üzenet, Hangulat-megosztás, 20 másodperces ölelés, Rád gondolok, Híd-jelzés). Napi sorsolás 6 funkció között.
+**Aktuális verzió:** v0.8 — Architektúra-átalakítás. Mit mondana napi fix kártya, csapat-funkciók modal-ban (nem napi sorsolt), 12 vezetett páros-meditáció esti rituáléként, élő presence (ki mikor van fent).
 
-## ⚙️ V0.7 frissítés (ha most v0.6-ról jössz)
+## ⚙️ V0.8 frissítés (ha most v0.7-ről jössz)
 
-### 1. SQL migráció — egy új tábla
+### 1. SQL migráció — egy új mező a pairs táblába
 
 Supabase → SQL Editor → New query:
 
 ```sql
-create table if not exists team_activities (
-  id uuid primary key default gen_random_uuid(),
-  pair_id uuid references pairs(id) on delete cascade,
-  activity_type text not null,
-  date text not null,
-  state jsonb default '{}'::jsonb,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
-);
-
-create unique index if not exists team_activities_pair_date_type
-  on team_activities (pair_id, date, activity_type);
-
-alter publication supabase_realtime add table team_activities;
-
-alter table team_activities enable row level security;
-create policy "open read team activities" on team_activities for select using (true);
-create policy "open write team activities" on team_activities for insert with check (true);
-create policy "open update team activities" on team_activities for update using (true);
-create policy "open delete team activities" on team_activities for delete using (true);
+alter table pairs add column if not exists last_seen jsonb default '{}'::jsonb;
 ```
+
+Ez minden — egyetlen mező a presence-hez.
 
 ### 2. Fájlok cseréje a repo-ban
 
 Cserélendő:
 - `app.js`, `index.html`, `style.css`, `lib/sync.js`, `sw.js`, `supabase-schema.sql`, `README.md`
 
-A `config.js`, `data/`, `pool-peldak/` változatlan.
+⭐ Új fájl: `data/meditations.js` (12 strukturált páros-meditáció)
+
+A `config.js`, többi `data/`, `pool-peldak/` változatlan.
 
 ```bash
 git add .
-git commit -m "we. v0.7 — 5 csapat-funkció + Mai választás random sorsolás"
+git commit -m "we. v0.8 — architektúra átalakítás + meditációk + presence"
 git push
 ```
 
-A localStorage kulcs verziót váltottam (`we-state-v6` → `we-state-v7`), tehát mindkét telefonon **újra kell párosítani** induláskor (vagy `__we.reset()`).
+A localStorage kulcs verziót váltottam (`we-state-v7` → `we-state-v8`), mindkét telefonon **újra kell párosítani**.
 
-## Mi az új (v0.7)
+## Mi az új (v0.8) — és mi MENT EL
 
-### Mai választás napi sorsolása
+### MENT EL: Mai választás napi sorsolás
+A v0.7-es Mai választás random sorsolás (napi 1 funkció a 6-ból) elment. Helyette:
+- **Mit mondana visszakerült napi rituálénak** (saját kártya a home-on, mint v0.5-ben). Mindennap egy.
+- A 4 másik csapat-funkció (Hála / Hangulat / Ölelés / Rád gondolok / Híd) áthelyezve a **csapat-funkciók modal-ba** — bármikor választható, nem napi sorsolt.
 
-A Mai választás kártya most **napi 1 véletlent sorsol** a 6 funkció közül:
-- Mit mondana a másik (a v0.5-ben épített kétlépcsős kérdésjáték)
-- Hála-üzenet
-- Hangulat-megosztás
-- 20 másodperces ölelés
-- Rád gondolok
-- Híd-jelzés
+### Új a Csillám alatt
+A Csillám figura alá két új elem került:
+- **„+ csapat-funkciók"** gomb — mindig elérhető. Tap → modal 5 pirulával.
+- **„elcsendesedünk?" buborék** — csak este 19–22 óra között jelenik meg halványan. Tap → meditáció-választó.
 
-A sorsolás **deterministic hash** a `pair_id + dátum`-ból — tehát mindkét telefon ugyanazt a funkciót látja az adott napon. Holnap új sorsolódik.
+### Csapat-funkciók modal
+Tap a „+ csapat-funkciók"-ra → 5 pirula:
+- 🌸 **Hála-üzenet** — egy konkrét köszönet
+- 😊 **Hangulat-megosztás** — egy emoji egymásnak
+- 🤗 **20 másodperces ölelés** — együtt csendben
+- ❤ **Rád gondolok** — egy szív-jelzés
+- 🌉 **Híd-jelzés** — „beszélnünk kéne"
 
-### Az 5 új funkció
+Bármikor tappolhatod bármelyiket. Az állapotok ugyanúgy szinkronizálódnak a két telefon között, mint v0.7-ben. A különbség: nem napi sorsolt, és bármikor új-rakezdhető (van „új …" gomb minden funkcióban a kész állapot után).
 
-#### 🌸 Hála-üzenet
-„Egy konkrét dolog, amit ma a párodnál értékelsz."
-- Egyikőtök írja → a másik elolvashatja → kész
-- Hármas állapot: senki nem írt → írj; te írtál → várjuk hogy elolvassa; ő írt → olvass; mindkettő → megtörtént
+### 🧘 Esti meditáció — a flagship új gameplay
 
-#### 😊 Hangulat-megosztás
-5 emoji választás (😊 jól · 😐 közepes · 😔 nehéz · 😴 fáradt · 🌟 csillogós).
-- Mindketten választotok egyet → kártyán látszik mindkettőtöké
-- Aki elsőként választ, az „A-szlot"; a másik „B-szlot"
+A „elcsendesedünk?" buborék 19–22 óra között jelenik meg a Csillám alatt. Tap → meditáció-választó (12 darab).
 
-#### 🤗 20 másodperces ölelés
-- Egyikőtök megnyomja az „indítom" gombot → mindkét telefonon fut a 20→0 visszaszámláló
-- A másik telefonján toast: „öleljetek 20 mp-ig ❤"
-- Lejár → „megcsináltuk?" gomb → kész
+**A 12 meditáció**:
+1. Szinkron-légzés (5 perc, 3 fázis)
+2. Szemkontaktus (5 perc)
+3. Tonglen — ajándékozó légzés (8 perc)
+4. Szív-érintés (6 perc, 3 fázis)
+5. Loving-kindness — egymásra (8 perc, 2 fázis)
+6. Test-pásztázás közösen (10 perc)
+7. Háttal háttnak (7 perc, 3 fázis)
+8. Sétáló meditáció (10 perc, 2 fázis)
+9. Tartózkodó ölelés (5 perc)
+10. Hála-meditáció a párnak (5 perc, 5 fázis)
+11. Csendes együtt-ülés (10 perc)
+12. Hullám-légzés (8 perc)
 
-#### ❤ Rád gondolok
-- Egy szív gomb a kártyán
-- Tap → jelzés a párodnak (toast: „ő rád gondol ❤")
-- Bármikor, bárhányszor — a kártyán számláló: „ma 3-szor küldted, 2-szer kaptál"
+**Hogy működik:**
+1. Választasz egyet → bevezető-képernyő (forrás, időtartam, intro szöveg)
+2. „Indítom" → futás-képernyő nagy időzítővel
+3. Minden fázisnál átírja a szöveget („Egyikőtök vezet…" / „Cseréljetek…" / „Az utolsó perc együtt…")
+4. Fázis-átmenetnél **csenget** egy lágy bowl-szerű hang (Web Audio API-val generált, nem zavaró)
+5. A végén egy záró csengetés + outro szöveg + „Bezárom" gomb
 
-#### 🌉 Híd-jelzés
-„Valamit szeretnék veled megbeszélni, de nehéz elindulnom."
-- Egyikőtök rányom a „beszélnünk kéne" gombra → a másik telefonján toast + kártya: „ő szeretne valamiről beszélni — készen állsz?"
-- A másik rányom a „hallgatlak" gombra → összekötve, élőben beszéltek
+**Pl. Szinkron-légzés**: 2 perc egyikőtök vezet → CSENG → 2 perc másik vezet → CSENG → 1 perc együtt → CSENG (vége).
 
-### Architektúra
+A 12-es pool a régi Pici alkalmazásból. Később tetszőleges méretre bővíthetjük (későbbi verziókban a többi pool-hoz hasonlóan feltölthetővé lehet tenni).
 
-Egy közös tábla: `team_activities`. Minden aktivitás-példány:
-- `pair_id`, `activity_type`, `date` — egyedi kulcs (egy páros napi 1 példányt kap típusonként)
-- `state` (jsonb) — típus-specifikus adatok
+### 🟢 Élő presence
+A Csillám alatt látható két korall pötty most **élve** mutatja, ki van fent:
+- **Halvány pötty (0.5)** — ma volt itt (legalább egyszer megnyitotta ma)
+- **Élénk + pulzáló pötty** — épp most online (Supabase Realtime presence-en keresztül)
+- **Nincs megjelenítve** — sem ma nem volt, sem épp most
 
-Ez azt is jelenti, hogy a táblába jövőben még több aktivitás-típus belefér séma-változás nélkül.
+Plusz a státusz-szöveg is dinamikusan változik: „épp itt vagytok mindketten" / „ma mindketten itt" / „csak te vagy itt ma".
 
-## Mi szinkron
+A presence-t Supabase Realtime presence csatorna kezeli (nem polling) — minimális overhead, valós idejű.
 
-Mind az 5 funkció **valós időben** szinkron a két telefonon — bárki bármit változtat, a partneren is azonnal frissül. Toast-ekkel jelezzük a fontos eseményeket (új hála-üzenet, hangulat-választás, ölelés-indítás, szív-jelzés, híd-jelzés és válasz).
+## Mi szinkron a két telefon között
 
-## Mi NINCS v0.7-ben
+| Funkció | Mit csinál |
+|---|---|
+| Párosítás, Csillám neve, szint-választás | UPDATE pairs |
+| Suttogás (gyűjtődik) | INSERT whispers |
+| Mai feladat teljesítése | INSERT feladat_log |
+| Mai kérdés megbeszélése | INSERT kerdesek |
+| Vágy hozzáadása / beteljesítése | INSERT/UPDATE vagyak |
+| Mit mondana session + válaszok | INSERT mit_mondana_sessions + responses |
+| Mit mondana felfedés | UPDATE mit_mondana_sessions |
+| Saját pool feltöltés | UPDATE pairs.custom_pools |
+| 5 csapat-funkció állapota | UPSERT team_activities |
+| **Presence (épp most)** | Supabase Realtime presence csatorna |
+| **Presence (ma volt itt)** | UPDATE pairs.last_seen |
+| Téma-választás, meditáció (helyi) | csak helyileg |
 
-- A csapat-funkciók nem archiválódnak külön Naplónk-fülbe (csak az aznapi kártyán élnek)
-- Mit mondana továbbra is a Naplónk → Kérdések fülre archiválódik (v0.5 óta)
-- A „Rád gondolok" napi limit nélküli — bárki bármikor küldhet többször
+## Mi NINCS v0.8-ban
 
-## Mi jön (v0.8)
+- A meditációknak nincs archív vagy számláló (nem mentődik el a szerverre, hogy melyik volt)
+- Nincs partner-jelzés meditáció közben („ő is meditál épp"). Esetleg v0.9-ben.
+- Magányos pillanat alt-Mindennapok: kihagyva (nem volt szükség)
 
-Esti rítusok + presence:
-- Közös meditáció (timer + soft bell + ki van fent jelzés)
-- Magányos pillanat alt-Mindennapok (ha csak egyikőtök van fent)
-- Élő status-dotok valós idejű presence-szel
-- Csillám éjjeli meditáció-javaslat interaktívvá
+## Mi jön (v0.9)
+
+Emlékek + idő-funkciók:
+- **Visszhang** — egy gondolatot Pici „őrzi" és valamikor random átadja
+- **Évforduló-szellem** — ha egy év múlva ugyanaznap volt valami emlékezetes
+- **Zenei időkapszula** — egy dal egy emlékkel
+- **Színes nap** — közös szín a napra
+- **Párhuzamos pillanat** — random kérdés napjában egyszer mindkettőtöknél
 
 ## Mi jön később
 
-- v0.9: Emlékek + idő-funkciók (Visszhang, Évforduló-szellem, Zenei időkapszula, Színes nap, Párhuzamos pillanat)
 - v0.10: Polish + Auth + szigorúbb RLS
 - v1.0+: Mélyvíz mód
 

@@ -6,11 +6,12 @@
 import { feladatok } from './data/feladatok.js';
 import { kerdesek as kerdesPool } from './data/kerdesek.js';
 import { mitMondanaPool } from './data/mitmondana.js';
+import { meditations } from './data/meditations.js';
 import * as sync from './lib/sync.js';
 
 // ─── State ──────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'we-state-v7';
+const STORAGE_KEY = 'we-state-v8';
 
 const defaultState = {
   myMemberId: null,
@@ -38,10 +39,14 @@ const defaultState = {
   mmArchive: [],
   themePref: 'auto',
   customPools: {},
-  // v0.7 — csapat-funkciók
-  todayActivityType: null,    // 'mitmondana' | 'hala' | 'hangulat' | 'oles' | 'gondolok' | 'hid'
-  teamActivityToday: null,    // { id, type, date, state } — szerverbeli legfrissebb
-  hugTimerStartedAt: null,    // helyi (csak ezen az eszközön fut a countdown)
+  // v0.8 — csapat-funkciók típus szerint (nem napi rotáció)
+  csapatToday: {},        // { hala: {state}, hangulat: {state}, oles: {state}, gondolok: {state}, hid: {state} }
+  csapatActiveType: null, // melyik típus van épp megnyitva a modalban
+  // presence
+  partnerOnline: false,
+  partnerSeenToday: false,
+  // meditáció (helyi futás)
+  activeMedit: null,      // { id, title, phases, intro, outro, source, totalSec, startedAt, currentPhaseIdx, phaseEndsAt }
   hasSeenArrival: false,
 };
 
@@ -171,7 +176,7 @@ const syncCallbacks = {
       toast('pool frissítve a párodtól ✓');
       if (currentScreen === 'home') {
         renderQuestionCard();
-        renderPickCard();
+        renderMmCard();
         renderTask();
       }
     }
@@ -290,7 +295,7 @@ const syncCallbacks = {
       const s = payload.new;
       if (!state.mmToday && s.date === todayKey()) {
         setState({ mmToday: hydrateMmSession(s, []) });
-        if (currentScreen === 'home') renderPickCard();
+        if (currentScreen === 'home') renderMmCard();
       }
     } else if (ev === 'UPDATE' && payload.new) {
       const s = payload.new;
@@ -319,7 +324,7 @@ const syncCallbacks = {
             };
             setState({ mmArchive: [archEntry, ...state.mmArchive] });
           }
-          if (currentScreen === 'home') renderPickCard();
+          if (currentScreen === 'home') renderMmCard();
           if (currentScreen === 'mm-status') {
             navigate('mm-reveal');
           } else if (currentScreen === 'mm-reveal') {
@@ -350,7 +355,7 @@ const syncCallbacks = {
     if (!isFromMe && !state.partnerMemberId) {
       setState({ partnerMemberId: response.member_id });
     }
-    if (currentScreen === 'home') renderPickCard();
+    if (currentScreen === 'home') renderMmCard();
     if (currentScreen === 'mm-status') renderMmStatus();
     if (!isFromMe) {
       toast(`${state.piciName || 'a párod'}: válaszolt ❤`);
@@ -362,37 +367,34 @@ const syncCallbacks = {
     if (ev === 'DELETE') return;
     if (!payload.new) return;
     const ta = payload.new;
-    if (ta.date !== todayKey()) return;  // csak a mai napról törődünk
-    if (ta.activity_type !== state.todayActivityType) return;
-    const wasState = state.teamActivityToday?.state || {};
-    setState({ teamActivityToday: ta });
+    if (ta.date !== todayKey()) return;
+    const type = ta.activity_type;
+    if (!CSAPAT_TYPES.includes(type)) return;
+    const wasState = state.csapatToday[type]?.state || {};
+    const newCsapatToday = { ...state.csapatToday, [type]: ta };
+    setState({ csapatToday: newCsapatToday });
 
-    // Toast-ek a partner-akciókról
     const newState = ta.state || {};
-    if (ta.activity_type === 'hala' && newState.author_id && !isMyId(newState.author_id) && !wasState.author_id) {
+    if (type === 'hala' && newState.author_id && !isMyId(newState.author_id) && !wasState.author_id) {
       toast(`${state.piciName || 'a párod'}: hála-üzenet ❤`);
-    } else if (ta.activity_type === 'hangulat') {
-      const hadPartner = wasState.b_id && !isMyId(wasState.b_id);
-      const hasPartner = newState.b_id && !isMyId(newState.b_id);
+    } else if (type === 'hangulat') {
+      const hadPartnerB = wasState.b_id && !isMyId(wasState.b_id);
+      const hasPartnerB = newState.b_id && !isMyId(newState.b_id);
       const hadPartnerA = wasState.a_id && !isMyId(wasState.a_id);
       const hasPartnerA = newState.a_id && !isMyId(newState.a_id);
-      if ((hasPartner && !hadPartner) || (hasPartnerA && !hadPartnerA)) {
+      if ((hasPartnerB && !hadPartnerB) || (hasPartnerA && !hadPartnerA)) {
         toast(`${state.piciName || 'a párod'}: hangulat ✓`);
       }
-    } else if (ta.activity_type === 'oles') {
-      if (newState.started_at && !wasState.started_at) {
-        toast('öleljetek 20 mp-ig ❤');
-      }
-    } else if (ta.activity_type === 'gondolok') {
+    } else if (type === 'oles') {
+      if (newState.started_at && !wasState.started_at) toast('öleljetek 20 mp-ig ❤');
+    } else if (type === 'gondolok') {
       const oldPings = (wasState.pings || []).length;
       const newPings = (newState.pings || []).length;
       if (newPings > oldPings) {
         const lastPing = newState.pings[newPings - 1];
-        if (!isMyId(lastPing.from)) {
-          toast(`${state.piciName || 'a párod'}: rád gondol ❤`);
-        }
+        if (!isMyId(lastPing.from)) toast(`${state.piciName || 'a párod'}: rád gondol ❤`);
       }
-    } else if (ta.activity_type === 'hid') {
+    } else if (type === 'hid') {
       if (newState.requester_id && !isMyId(newState.requester_id) && !wasState.requester_id) {
         toast(`${state.piciName || 'a párod'}: híd-jelzést küldött ❤`);
       } else if (newState.responder_id && !isMyId(newState.responder_id) && !wasState.responder_id) {
@@ -400,7 +402,10 @@ const syncCallbacks = {
       }
     }
 
-    if (currentScreen === 'home') renderPickCard();
+    // ha a megnyitott csapat-detail típus változott, frissítsük
+    if (currentScreen === 'csapat-detail' && state.csapatActiveType === type) {
+      renderCsapatDetail(type);
+    }
   },
 };
 
@@ -436,6 +441,11 @@ async function hydrateFromServer() {
     if (pair.pici_born_at) setState({ piciBornAt: new Date(pair.pici_born_at).getTime() });
     if (pair.custom_pools && typeof pair.custom_pools === 'object') {
       setState({ customPools: pair.custom_pools });
+    }
+    // partner azonosítása a pair member listából
+    if (pair.member_a && pair.member_b) {
+      const other = pair.member_a === state.myMemberId ? pair.member_b : pair.member_a;
+      if (other && !state.partnerMemberId) setState({ partnerMemberId: other });
     }
   }
   const whisper = await sync.loadCurrentWhisper(state.pairId);
@@ -524,15 +534,35 @@ async function hydrateFromServer() {
     mmArchive: mmAll.map(({ session, responses }) => hydrateMmArchiveEntry(session, responses)),
   });
 
-  // v0.7: mai team activity (csak a mai sorsolt típust)
-  const todayType = pickTodayActivityType();
-  setState({ todayActivityType: todayType });
-  if (todayType !== 'mitmondana') {
-    const ta = await sync.loadTodayActivity(state.pairId, todayType, todayKey());
-    setState({ teamActivityToday: ta });
-  } else {
-    setState({ teamActivityToday: null });
+  // v0.8: mind az 5 csapat-típus mai állapotát betöltjük párhuzamosan
+  const csapatResults = await Promise.all(
+    CSAPAT_TYPES.map(t => sync.loadTodayActivity(state.pairId, t, todayKey()))
+  );
+  const csapatToday = {};
+  CSAPAT_TYPES.forEach((t, i) => {
+    if (csapatResults[i]) csapatToday[t] = csapatResults[i];
+  });
+  setState({ csapatToday });
+
+  // v0.8: presence — ma volt itt jelölés (last_seen)
+  if (pair?.last_seen && state.partnerMemberId) {
+    const partnerLast = pair.last_seen[state.partnerMemberId];
+    if (partnerLast) {
+      const partnerLastDate = new Date(partnerLast);
+      const isToday = partnerLastDate.toDateString() === new Date().toDateString();
+      setState({ partnerSeenToday: isToday });
+    }
   }
+  // saját last_seen frissítése
+  await sync.updateLastSeen(state.pairId, state.myMemberId);
+  // presence csatorna join
+  sync.joinPresence(state.pairId, state.myMemberId, {
+    onPresenceSync: onlineMembers => {
+      const partnerOnline = onlineMembers.some(m => m !== state.myMemberId);
+      setState({ partnerOnline });
+      if (currentScreen === 'home') renderPresence();
+    },
+  });
 }
 
 function hydrateMmSession(session, responses) {
@@ -613,6 +643,18 @@ function back() {
   } else if (currentScreen === 'mm-input' || currentScreen === 'mm-status' || currentScreen === 'mm-reveal') {
     navigate('home');
   } else if (currentScreen === 'hala-compose' || currentScreen === 'hala-view') {
+    navigate('home');
+  } else if (currentScreen === 'csapat') {
+    navigate('home');
+  } else if (currentScreen === 'csapat-detail') {
+    setState({ csapatActiveType: null });
+    stopHugTimerTick();
+    navigate('csapat');
+  } else if (currentScreen === 'meditation-picker') {
+    navigate('home');
+  } else if (currentScreen === 'meditation-run') {
+    stopMeditationTick();
+    setState({ activeMedit: null });
     navigate('home');
   } else if (currentScreen === 'journal') {
     navigate('home');
@@ -1069,11 +1111,10 @@ function todayHasMmRevealed() {
   return mmStatus() === 'revealed' && state.mmToday?.date === todayKey();
 }
 
-// ─── Mai választás napi sorsolás (deterministic hash) ─────────────────
+// ─── Csapat-funkciók (v0.8 — modal, típus szerint, nem napi rotáció) ──
 
-const ACTIVITY_TYPES = ['mitmondana', 'hala', 'hangulat', 'oles', 'gondolok', 'hid'];
-const ACTIVITY_LABELS = {
-  mitmondana: 'Mit mondana a másik?',
+const CSAPAT_TYPES = ['hala', 'hangulat', 'oles', 'gondolok', 'hid'];
+const CSAPAT_LABELS = {
   hala: 'Hála-üzenet',
   hangulat: 'Hangulat-megosztás',
   oles: '20 másodperces ölelés',
@@ -1088,26 +1129,19 @@ const MOODS = [
   { emoji: '🌟', label: 'csillogós' },
 ];
 
-function hashString(s) {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) {
-    h = ((h << 5) + h + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-
-function pickTodayActivityType() {
-  if (!state.pairId) return 'mitmondana';
-  const seed = hashString(state.pairId + ':' + todayKey());
-  return ACTIVITY_TYPES[seed % ACTIVITY_TYPES.length];
-}
-
-function getTodayActivityState() {
-  return state.teamActivityToday?.state || {};
+function getCsapatState(type) {
+  return state.csapatToday?.[type]?.state || {};
 }
 
 function isMyId(id) {
   return id && id === state.myMemberId;
+}
+
+// ─── Meditáció — esti óra (19-22) detektálás ──────────────────────────
+
+function isEveningMeditationHour() {
+  const h = new Date().getHours();
+  return h >= 19 && h < 22;
 }
 
 // ─── Toast ─────────────────────────────────────────────────────────────
@@ -1218,7 +1252,9 @@ const screenBindings = {
     renderTask();
     renderWhisper();
     renderQuestionCard();
-    renderPickCard();
+    renderMmCard();
+    renderPresence();
+    renderEveningBubble();
   },
 
   ['whisper-compose']() {
@@ -1300,7 +1336,42 @@ const screenBindings = {
   },
 
   ['hala-view']() {
-    const s = getTodayActivityState();
+    const s = getCsapatState('hala');
+    const textEl = app.querySelector('[data-hala-text]');
+    if (textEl) textEl.textContent = s.text || '';
+  },
+
+  csapat() {
+    // a csapat-modal nem igényel külön init-et
+  },
+
+  ['csapat-detail']() {
+    const type = state.csapatActiveType;
+    if (!type) { back(); return; }
+    renderCsapatDetail(type);
+    if (type === 'hala') setTimeout(() => app.querySelector('[data-hala-input]')?.focus(), 200);
+  },
+
+  ['meditation-picker']() {
+    const list = app.querySelector('[data-meditation-list]');
+    if (!list) return;
+    list.innerHTML = meditations.map(m => `
+      <button class="medit-tile" data-action="open-meditation" data-medit-id="${m.id}">
+        <span>
+          <div class="medit-tile-title">${escapeHtml(m.title)}</div>
+          <div class="medit-tile-source">${escapeHtml(m.source)}</div>
+        </span>
+        <span class="medit-tile-duration">${m.duration} perc</span>
+      </button>
+    `).join('');
+  },
+
+  ['meditation-run']() {
+    if (state.activeMedit) {
+      // ha van aktív, intro állapot
+      renderMeditationIntro();
+    }
+  },
     const textEl = app.querySelector('[data-hala-text]');
     if (textEl) textEl.textContent = s.text || '';
   },
@@ -1436,97 +1507,118 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function renderPickCard() {
-  const card = app.querySelector('[data-pick-card]');
-  const labelEl = app.querySelector('[data-pick-label]');
-  const bodyEl = app.querySelector('[data-pick-body]');
-  if (!card || !bodyEl) return;
+// ─── v0.8 render: Mit mondana napi kártya (visszaáll a v0.5 mintára) ──
 
-  const type = state.todayActivityType || pickTodayActivityType();
-  if (state.todayActivityType !== type) setState({ todayActivityType: type });
+function renderMmCard() {
+  const card = app.querySelector('[data-mm-card]');
+  const doneCard = app.querySelector('[data-mm-card-done]');
+  if (!card || !doneCard) return;
 
-  if (labelEl) labelEl.textContent = `Mai választás · ${type === 'mitmondana' ? 'kérdés' : 'csapat'}`;
-
-  if (type === 'mitmondana') {
-    renderPickMitMondana(bodyEl);
-  } else if (type === 'hala') {
-    renderPickHala(bodyEl);
-  } else if (type === 'hangulat') {
-    renderPickHangulat(bodyEl);
-  } else if (type === 'oles') {
-    renderPickOles(bodyEl);
-  } else if (type === 'gondolok') {
-    renderPickGondolok(bodyEl);
-  } else if (type === 'hid') {
-    renderPickHid(bodyEl);
-  }
-}
-
-// ─── Mai választás · sub-renderek ─────────────────────────────────────
-
-function renderPickMitMondana(body) {
   const status = mmStatus();
   if (status === 'revealed' && state.mmToday?.date === todayKey()) {
-    body.innerHTML = `
-      <div class="activity-title">Mit mondana a másik?</div>
-      <div class="activity-body" style="font-style: italic; opacity: 0.7;">„${escapeHtml(state.mmToday.question)}"</div>
-      <div class="activity-status">megbeszéltétek ✓ · holnap új jön</div>
-    `;
+    card.hidden = true;
+    doneCard.hidden = false;
+    const t = app.querySelector('[data-mm-card-done-text]');
+    if (t) t.textContent = `„${state.mmToday.question}"`;
     return;
   }
+
+  card.hidden = false;
+  doneCard.hidden = true;
+
   const q = state.mmToday
     ? { id: state.mmToday.questionId, text: state.mmToday.question }
     : pickTodayMitMondana();
-  let statusText = '';
-  let ctaText = 'megnyitom →';
-  if (status === 'i-submitted') { statusText = 'elküldted ✓ · várunk a párodra'; ctaText = 'státusz →'; }
-  else if (status === 'partner-submitted') { statusText = 'ő már válaszolt — most te'; ctaText = 'megnyitom →'; }
-  else if (status === 'both') { statusText = 'mindketten kész'; ctaText = 'felfedem →'; }
-  body.innerHTML = `
-    <div class="activity-title">Mit mondana a másik?</div>
-    <div class="activity-body">${escapeHtml(q.text)}</div>
-    ${statusText ? `<div class="activity-status">${statusText}</div>` : ''}
-    <button class="btn-primary activity-cta" data-action="open-mitmondana">${ctaText}</button>
-  `;
+  const qEl = app.querySelector('[data-mm-card-question]');
+  if (qEl) qEl.textContent = q.text;
+
+  const statusEl = app.querySelector('[data-mm-card-status]');
+  const ctaEl = app.querySelector('[data-mm-card-cta]');
+  if (!statusEl || !ctaEl) return;
+
+  if (status === 'none') {
+    statusEl.textContent = '';
+    ctaEl.textContent = 'megnyitom →';
+  } else if (status === 'i-submitted') {
+    statusEl.textContent = `elküldted ✓ · várunk a párodra`;
+    ctaEl.textContent = 'státusz →';
+  } else if (status === 'partner-submitted') {
+    statusEl.textContent = 'ő már válaszolt — most te';
+    ctaEl.textContent = 'megnyitom →';
+  } else if (status === 'both') {
+    statusEl.textContent = 'mindketten kész';
+    ctaEl.textContent = 'felfedem →';
+  }
 }
 
-function renderPickHala(body) {
-  const s = getTodayActivityState();
-  // állapotok
+// ─── v0.8 render: presence pöttyök (saját + partner) ──────────────────
+
+function renderPresence() {
+  const selfDot = app.querySelector('[data-dot-self]');
+  const partnerDot = app.querySelector('[data-dot-partner]');
+  const text = app.querySelector('[data-status-text]');
+  if (!selfDot || !partnerDot) return;
+  // én mindig "épp most" vagyok
+  selfDot.classList.add('is-online');
+  selfDot.classList.add('is-today');
+  // partner: élénk = épp most, halvány = ma volt
+  partnerDot.classList.toggle('is-online', !!state.partnerOnline);
+  partnerDot.classList.toggle('is-today', !!(state.partnerOnline || state.partnerSeenToday));
+  // szöveg
+  if (text) {
+    if (state.partnerOnline) text.textContent = 'épp itt vagytok mindketten';
+    else if (state.partnerSeenToday) text.textContent = 'ma mindketten itt';
+    else text.textContent = 'csak te vagy itt ma';
+  }
+}
+
+// ─── v0.8 render: esti meditáció-buborék (19-22h) ─────────────────────
+
+function renderEveningBubble() {
+  const bubble = app.querySelector('[data-medit-bubble]');
+  if (!bubble) return;
+  bubble.hidden = !isEveningMeditationHour();
+}
+
+// ─── v0.8 render: csapat-detail (a kiválasztott típus a modalban) ─────
+
+function renderCsapatDetail(type) {
+  const titleEl = app.querySelector('[data-csapat-detail-title]');
+  const bodyEl = app.querySelector('[data-csapat-detail-body]');
+  if (!titleEl || !bodyEl) return;
+  titleEl.textContent = CSAPAT_LABELS[type] || '';
+  if (type === 'hala') renderCsapatDetailHala(bodyEl);
+  else if (type === 'hangulat') renderCsapatDetailHangulat(bodyEl);
+  else if (type === 'oles') renderCsapatDetailOles(bodyEl);
+  else if (type === 'gondolok') renderCsapatDetailGondolok(bodyEl);
+  else if (type === 'hid') renderCsapatDetailHid(bodyEl);
+}
+
+function renderCsapatDetailHala(body) {
+  const s = getCsapatState('hala');
   if (s.acked_at && s.author_id) {
-    body.innerHTML = `
-      <div class="activity-title">Hála-üzenet</div>
-      <div class="activity-status">megtörtént ❤ · holnap új jön</div>
-    `;
+    body.innerHTML = `<p class="modal-hint">megtörtént ❤ · új lehet bármikor</p>
+      <button class="btn-primary" data-action="reset-csapat" data-csapat-type="hala">Új üzenet írok</button>`;
     return;
   }
   if (s.author_id && isMyId(s.author_id)) {
-    body.innerHTML = `
-      <div class="activity-title">Hála-üzenet</div>
-      <div class="activity-body" style="opacity: 0.7;">elküldted: „${escapeHtml((s.text || '').slice(0, 60))}${s.text && s.text.length > 60 ? '…' : ''}"</div>
-      <div class="activity-status">várjuk hogy a párod elolvassa</div>
-    `;
+    body.innerHTML = `<p class="modal-hint">elküldted, várjuk hogy elolvassa:</p>
+      <div class="hala-text">„${escapeHtml(s.text || '')}"</div>`;
     return;
   }
   if (s.author_id && !isMyId(s.author_id)) {
-    body.innerHTML = `
-      <div class="activity-title">Hála-üzenet</div>
-      <div class="activity-body">${state.piciName || 'a párod'} írt egy köszönetet neked.</div>
-      <button class="btn-primary activity-cta" data-action="open-hala-view">elolvasom →</button>
-    `;
+    body.innerHTML = `<p class="modal-hint">a párod köszönete neked:</p>
+      <div class="hala-text">${escapeHtml(s.text || '')}</div>
+      <button class="btn-primary" data-action="ack-hala">Olvasod ❤</button>`;
     return;
   }
-  // senki sem írt
-  body.innerHTML = `
-    <div class="activity-title">Hála-üzenet</div>
-    <div class="activity-body">Egy konkrét dolog, amit ma a párodnál értékelsz.</div>
-    <button class="btn-primary activity-cta" data-action="open-hala-compose">írok →</button>
-  `;
+  body.innerHTML = `<p class="modal-hint">egy konkrét dolog, amit ma a párodnál értékelsz</p>
+    <textarea class="note-input" data-hala-input maxlength="280" placeholder="..."></textarea>
+    <button class="btn-primary" data-action="send-hala">Elküldöm</button>`;
 }
 
-function renderPickHangulat(body) {
-  const s = getTodayActivityState();
-  // két szlot: a_id / a_emoji és b_id / b_emoji
+function renderCsapatDetailHangulat(body) {
+  const s = getCsapatState('hangulat');
   let mine = null, theirs = null;
   if (s.a_id && isMyId(s.a_id)) { mine = s.a_emoji; theirs = s.b_emoji || null; }
   else if (s.b_id && isMyId(s.b_id)) { mine = s.b_emoji; theirs = s.a_emoji || null; }
@@ -1537,7 +1629,7 @@ function renderPickHangulat(body) {
     const myMood = MOODS.find(m => m.emoji === mine);
     const theirMood = MOODS.find(m => m.emoji === theirs);
     body.innerHTML = `
-      <div class="activity-title">Hangulat-megosztás</div>
+      <p class="modal-hint">megosztottátok ❤</p>
       <div class="mood-display">
         <div class="mood-display-item">
           <div class="mood-display-emoji">${mine}</div>
@@ -1548,69 +1640,52 @@ function renderPickHangulat(body) {
           <div class="mood-display-label">Ő · ${theirMood?.label || ''}</div>
         </div>
       </div>
-      <div class="activity-status">megosztottátok ❤ · holnap új jön</div>
+      <button class="btn-ghost" data-action="reset-csapat" data-csapat-type="hangulat">Új hangulat</button>
     `;
     return;
   }
-  if (mine) {
-    body.innerHTML = `
-      <div class="activity-title">Hangulat-megosztás</div>
-      <div class="activity-body">elküldted: ${mine}</div>
-      <div class="activity-status">várunk a párodra</div>
-    `;
-    return;
-  }
-  // még nem választottál
   body.innerHTML = `
-    <div class="activity-title">Hangulat-megosztás</div>
-    <div class="activity-body">Hogy érzed magad most?</div>
+    <p class="modal-hint">hogy érzed magad most?</p>
     <div class="mood-row">
-      ${MOODS.map(m => `<button class="mood-btn" data-action="pick-mood" data-emoji="${m.emoji}" title="${m.label}">${m.emoji}</button>`).join('')}
+      ${MOODS.map(m => `<button class="mood-btn ${mine === m.emoji ? 'is-picked' : ''}" data-action="pick-mood" data-emoji="${m.emoji}" title="${m.label}">${m.emoji}</button>`).join('')}
     </div>
-    ${theirs ? `<div class="activity-status">ő már: ${theirs}</div>` : ''}
+    ${mine ? `<p class="modal-hint">elküldted: ${mine} · várjuk a párodat</p>` : ''}
+    ${theirs ? `<p class="modal-hint">ő már: ${theirs}</p>` : ''}
   `;
 }
 
-function renderPickOles(body) {
-  const s = getTodayActivityState();
+function renderCsapatDetailOles(body) {
+  const s = getCsapatState('oles');
   if (s.completed_at) {
-    body.innerHTML = `
-      <div class="activity-title">20 másodperces ölelés</div>
-      <div class="activity-status">megcsináltátok ❤ · holnap új jön</div>
-    `;
+    body.innerHTML = `<p class="modal-hint">megcsináltátok ❤ · újat indíthattok bármikor</p>
+      <button class="btn-primary" data-action="reset-csapat" data-csapat-type="oles">Újra</button>`;
     return;
   }
   if (s.started_at) {
     const elapsed = Math.floor((Date.now() - new Date(s.started_at).getTime()) / 1000);
     const remaining = Math.max(0, 20 - elapsed);
     body.innerHTML = `
-      <div class="activity-title">20 másodperces ölelés</div>
       <p class="hug-prompt">öleljétek meg egymást csendben</p>
       <div class="hug-timer" data-hug-timer>${remaining}</div>
       ${remaining === 0
-        ? `<button class="btn-primary activity-cta" data-action="complete-hug">megcsináltuk ❤</button>`
-        : `<div class="activity-status" style="text-align:center;">másodperc</div>`
+        ? `<button class="btn-primary" data-action="complete-hug">megcsináltuk ❤</button>`
+        : `<p class="modal-hint" style="text-align:center;">másodperc</p>`
       }
     `;
     if (remaining > 0) startHugTimerTick();
     return;
   }
-  // senki sem indította
-  body.innerHTML = `
-    <div class="activity-title">20 másodperces ölelés</div>
-    <div class="activity-body">Egy hosszú, csendes ölelés most.</div>
-    <button class="btn-primary activity-cta" data-action="start-hug">indítom →</button>
-  `;
+  body.innerHTML = `<p class="modal-hint">egy hosszú, csendes ölelés most</p>
+    <button class="btn-primary" data-action="start-hug">indítom →</button>`;
 }
 
-function renderPickGondolok(body) {
-  const s = getTodayActivityState();
+function renderCsapatDetailGondolok(body) {
+  const s = getCsapatState('gondolok');
   const pings = s.pings || [];
   const myCount = pings.filter(p => isMyId(p.from)).length;
   const theirCount = pings.filter(p => !isMyId(p.from)).length;
   body.innerHTML = `
-    <div class="activity-title">Rád gondolok</div>
-    <div class="activity-body" style="text-align:center;">Egy szív-jelzés bármikor.</div>
+    <p class="modal-hint">egy szív-jelzés a párodnak — bármikor</p>
     <div class="gondolok-counts">
       <span><span class="gondolok-count-num">${myCount}</span> küldtem</span>
       <span><span class="gondolok-count-num">${theirCount}</span> kaptam</span>
@@ -1619,38 +1694,26 @@ function renderPickGondolok(body) {
   `;
 }
 
-function renderPickHid(body) {
-  const s = getTodayActivityState();
+function renderCsapatDetailHid(body) {
+  const s = getCsapatState('hid');
   if (s.responder_id) {
     const meReq = isMyId(s.requester_id);
-    body.innerHTML = `
-      <div class="activity-title">Híd-jelzés</div>
-      <div class="activity-body">Összekötve ❤ · most beszéljetek élőben.</div>
-      <div class="activity-status">${meReq ? 'ő válaszolt: hallgat' : 'te válaszoltál: hallgatod'}</div>
-    `;
+    body.innerHTML = `<p class="modal-hint">összekötve ❤ · most beszéljetek élőben</p>
+      <p class="modal-hint">${meReq ? 'ő válaszolt: hallgat' : 'te válaszoltál: hallgatod'}</p>
+      <button class="btn-ghost" data-action="reset-csapat" data-csapat-type="hid">Új jelzés</button>`;
     return;
   }
   if (s.requester_id) {
     if (isMyId(s.requester_id)) {
-      body.innerHTML = `
-        <div class="activity-title">Híd-jelzés</div>
-        <div class="activity-body">Elküldted — várjuk hogy készen álljon.</div>
-      `;
+      body.innerHTML = `<p class="modal-hint">elküldted — várjuk hogy készen álljon</p>`;
     } else {
-      body.innerHTML = `
-        <div class="activity-title">Híd-jelzés</div>
-        <div class="activity-body">${state.piciName || 'a párod'}: szeretne valamiről beszélni.</div>
-        <button class="btn-primary activity-cta" data-action="accept-hid">hallgatlak ❤</button>
-      `;
+      body.innerHTML = `<p class="modal-hint">${state.piciName || 'a párod'}: szeretne valamiről beszélni</p>
+        <button class="btn-primary" data-action="accept-hid">hallgatlak ❤</button>`;
     }
     return;
   }
-  // senki sem jelezte
-  body.innerHTML = `
-    <div class="activity-title">Híd-jelzés</div>
-    <div class="activity-body">„Valamit szeretnék veled megbeszélni, de nehéz elindulnom."</div>
-    <button class="btn-primary activity-cta" data-action="send-hid">beszélnünk kéne →</button>
-  `;
+  body.innerHTML = `<p class="modal-hint">„valamit szeretnék veled megbeszélni, de nehéz elindulnom"</p>
+    <button class="btn-primary" data-action="send-hid">beszélnünk kéne →</button>`;
 }
 
 // ─── Ölelés countdown — interval ──────────────────────────────────────
@@ -1659,9 +1722,9 @@ let hugInterval = null;
 function startHugTimerTick() {
   if (hugInterval) return;
   hugInterval = setInterval(() => {
-    if (currentScreen !== 'home') { stopHugTimerTick(); return; }
-    if (state.todayActivityType !== 'oles') { stopHugTimerTick(); return; }
-    const s = getTodayActivityState();
+    if (currentScreen !== 'csapat-detail') { stopHugTimerTick(); return; }
+    if (state.csapatActiveType !== 'oles') { stopHugTimerTick(); return; }
+    const s = getCsapatState('oles');
     if (!s.started_at || s.completed_at) { stopHugTimerTick(); return; }
     const elapsed = Math.floor((Date.now() - new Date(s.started_at).getTime()) / 1000);
     const remaining = Math.max(0, 20 - elapsed);
@@ -1669,7 +1732,7 @@ function startHugTimerTick() {
     if (timerEl) {
       timerEl.textContent = remaining;
       if (remaining === 0) {
-        renderPickCard();
+        renderCsapatDetail('oles');
         stopHugTimerTick();
       }
     }
@@ -1677,6 +1740,150 @@ function startHugTimerTick() {
 }
 function stopHugTimerTick() {
   if (hugInterval) { clearInterval(hugInterval); hugInterval = null; }
+}
+
+// ─── Meditáció — bell + futtatás ──────────────────────────────────────
+
+let meditAudioCtx = null;
+function playBell() {
+  try {
+    if (!meditAudioCtx) {
+      meditAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    const ctx = meditAudioCtx;
+    const now = ctx.currentTime;
+    // két frekvencia rétege (mély bowl-szerű hang)
+    const freqs = [528, 264];
+    freqs.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.18, now + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 3.5);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 4);
+    });
+  } catch (e) {
+    console.warn('[medit] bell hiba:', e);
+  }
+}
+
+let meditInterval = null;
+function startMeditation(meditId) {
+  const med = meditations.find(m => m.id === meditId);
+  if (!med) return;
+  const totalSec = med.phases.reduce((sum, p) => sum + p.duration_sec, 0);
+  const startedAt = Date.now();
+  setState({
+    activeMedit: {
+      id: med.id,
+      title: med.title,
+      source: med.source,
+      intro: med.intro,
+      outro: med.outro,
+      phases: med.phases,
+      totalSec,
+      startedAt,
+      currentPhaseIdx: 0,
+    },
+  });
+  playBell();
+  renderMeditationRunning();
+  if (meditInterval) clearInterval(meditInterval);
+  meditInterval = setInterval(tickMeditation, 250);
+}
+
+function tickMeditation() {
+  if (!state.activeMedit) { stopMeditationTick(); return; }
+  const m = state.activeMedit;
+  const elapsed = (Date.now() - m.startedAt) / 1000;
+  // melyik fázisban vagyunk?
+  let cum = 0;
+  let phaseIdx = m.phases.length;
+  for (let i = 0; i < m.phases.length; i++) {
+    if (elapsed < cum + m.phases[i].duration_sec) {
+      phaseIdx = i;
+      break;
+    }
+    cum += m.phases[i].duration_sec;
+  }
+  if (phaseIdx >= m.phases.length) {
+    // vége
+    playBell();
+    stopMeditationTick();
+    setState({ activeMedit: { ...m, currentPhaseIdx: -1 } });
+    renderMeditationFinished();
+    return;
+  }
+  if (phaseIdx !== m.currentPhaseIdx) {
+    setState({ activeMedit: { ...m, currentPhaseIdx: phaseIdx } });
+    if (phaseIdx > 0) playBell();  // fázis-átmenet bell (nem az elején)
+    renderMeditationRunning();
+  }
+  // óra frissítése
+  const remaining = Math.max(0, Math.ceil(m.totalSec - elapsed));
+  const timeEl = app.querySelector('[data-medit-time]');
+  if (timeEl) {
+    const min = Math.floor(remaining / 60);
+    const sec = remaining % 60;
+    timeEl.textContent = `${min}:${String(sec).padStart(2, '0')}`;
+  }
+}
+
+function stopMeditationTick() {
+  if (meditInterval) { clearInterval(meditInterval); meditInterval = null; }
+}
+
+function renderMeditationIntro() {
+  const m = state.activeMedit;
+  if (!m) return;
+  const titleEl = app.querySelector('[data-medit-title]');
+  const sourceEl = app.querySelector('[data-medit-source]');
+  const introEl = app.querySelector('[data-medit-intro]');
+  const runningEl = app.querySelector('[data-medit-running]');
+  const finishedEl = app.querySelector('[data-medit-finished]');
+  const startBtn = app.querySelector('[data-medit-start-btn]');
+  if (titleEl) titleEl.textContent = m.title;
+  if (sourceEl) sourceEl.textContent = `${m.source} · ${m.totalSec / 60} perc`;
+  if (introEl) { introEl.textContent = m.intro; introEl.hidden = false; }
+  if (runningEl) runningEl.hidden = true;
+  if (finishedEl) finishedEl.hidden = true;
+  if (startBtn) startBtn.hidden = false;
+}
+
+function renderMeditationRunning() {
+  const m = state.activeMedit;
+  if (!m) return;
+  const introEl = app.querySelector('[data-medit-intro]');
+  const runningEl = app.querySelector('[data-medit-running]');
+  const finishedEl = app.querySelector('[data-medit-finished]');
+  const startBtn = app.querySelector('[data-medit-start-btn]');
+  const phaseEl = app.querySelector('[data-medit-phase]');
+  if (introEl) introEl.hidden = true;
+  if (runningEl) runningEl.hidden = false;
+  if (finishedEl) finishedEl.hidden = true;
+  if (startBtn) startBtn.hidden = true;
+  if (phaseEl && m.phases[m.currentPhaseIdx]) {
+    phaseEl.textContent = m.phases[m.currentPhaseIdx].text;
+  }
+}
+
+function renderMeditationFinished() {
+  const m = state.activeMedit;
+  if (!m) return;
+  const introEl = app.querySelector('[data-medit-intro]');
+  const runningEl = app.querySelector('[data-medit-running]');
+  const finishedEl = app.querySelector('[data-medit-finished]');
+  const startBtn = app.querySelector('[data-medit-start-btn]');
+  const outroEl = app.querySelector('[data-medit-outro]');
+  if (introEl) introEl.hidden = true;
+  if (runningEl) runningEl.hidden = true;
+  if (finishedEl) finishedEl.hidden = false;
+  if (startBtn) startBtn.hidden = true;
+  if (outroEl) outroEl.textContent = m.outro || '';
 }
 
 function renderMmStatus() {
@@ -2191,17 +2398,34 @@ document.addEventListener('click', async e => {
       break;
     }
 
+    // ─── Csapat-modal megnyitás ────────────────────────────────────
+    case 'open-csapat': {
+      navigate('csapat');
+      break;
+    }
+    case 'csapat-pick': {
+      const type = actionEl.dataset.csapatType;
+      if (!type) return;
+      setState({ csapatActiveType: type });
+      navigate('csapat-detail');
+      break;
+    }
+    case 'reset-csapat': {
+      const type = actionEl.dataset.csapatType;
+      if (!type) return;
+      // helyi reset (új state ezen a típuson)
+      const newCsapatToday = { ...state.csapatToday };
+      delete newCsapatToday[type];
+      setState({ csapatToday: newCsapatToday });
+      // szerveren is — egy üres state-tel
+      if (syncReady && state.pairId) {
+        await sync.upsertActivity(state.pairId, type, todayKey(), null, () => ({}));
+      }
+      renderCsapatDetail(type);
+      break;
+    }
+
     // ─── Hála-üzenet ────────────────────────────────────────────────
-    case 'open-hala-compose': {
-      navigate('hala-compose');
-      break;
-    }
-
-    case 'open-hala-view': {
-      navigate('hala-view');
-      break;
-    }
-
     case 'send-hala': {
       const input = app.querySelector('[data-hala-input]');
       const text = input?.value.trim();
@@ -2211,34 +2435,34 @@ document.addEventListener('click', async e => {
         return;
       }
       const newState = { author_id: state.myMemberId, text, sent_at: new Date().toISOString() };
-      // optimista helyi
       setState({
-        teamActivityToday: {
-          ...(state.teamActivityToday || {}),
-          activity_type: 'hala',
-          date: todayKey(),
-          state: newState,
+        csapatToday: {
+          ...state.csapatToday,
+          hala: { activity_type: 'hala', date: todayKey(), state: newState },
         },
       });
       if (syncReady && state.pairId) {
         await sync.upsertActivity(state.pairId, 'hala', todayKey(), null, () => newState);
       }
       toast('elküldted ❤');
-      navigate('home');
+      renderCsapatDetail('hala');
       break;
     }
 
     case 'ack-hala': {
-      const s = getTodayActivityState();
+      const s = getCsapatState('hala');
       const newState = { ...s, acked_at: new Date().toISOString() };
       setState({
-        teamActivityToday: { ...(state.teamActivityToday || {}), state: newState },
+        csapatToday: {
+          ...state.csapatToday,
+          hala: { ...(state.csapatToday.hala || {}), state: newState },
+        },
       });
       if (syncReady && state.pairId) {
         await sync.upsertActivity(state.pairId, 'hala', todayKey(), null, prev => ({ ...prev, acked_at: new Date().toISOString() }));
       }
       toast('elolvastad ❤');
-      navigate('home');
+      renderCsapatDetail('hala');
       break;
     }
 
@@ -2246,21 +2470,22 @@ document.addEventListener('click', async e => {
     case 'pick-mood': {
       const emoji = actionEl.dataset.emoji;
       if (!emoji) return;
-      const s = getTodayActivityState();
-      // Eldöntjük: A-szlot vagy B-szlot? Az első jövő = A, a második = B.
+      const s = getCsapatState('hangulat');
       let newState;
       if (!s.a_id) {
         newState = { ...s, a_id: state.myMemberId, a_emoji: emoji, a_at: new Date().toISOString() };
       } else if (!s.b_id && s.a_id !== state.myMemberId) {
         newState = { ...s, b_id: state.myMemberId, b_emoji: emoji, b_at: new Date().toISOString() };
       } else if (s.a_id === state.myMemberId) {
-        // saját választás módosítás
         newState = { ...s, a_emoji: emoji, a_at: new Date().toISOString() };
       } else {
         newState = { ...s, b_emoji: emoji, b_at: new Date().toISOString() };
       }
       setState({
-        teamActivityToday: { ...(state.teamActivityToday || {}), activity_type: 'hangulat', date: todayKey(), state: newState },
+        csapatToday: {
+          ...state.csapatToday,
+          hangulat: { activity_type: 'hangulat', date: todayKey(), state: newState },
+        },
       });
       if (syncReady && state.pairId) {
         await sync.upsertActivity(state.pairId, 'hangulat', todayKey(), null, prev => {
@@ -2270,7 +2495,7 @@ document.addEventListener('click', async e => {
           return { ...prev, b_emoji: emoji, b_at: new Date().toISOString() };
         });
       }
-      renderPickCard();
+      renderCsapatDetail('hangulat');
       break;
     }
 
@@ -2278,20 +2503,26 @@ document.addEventListener('click', async e => {
     case 'start-hug': {
       const newState = { started_at: new Date().toISOString(), started_by: state.myMemberId };
       setState({
-        teamActivityToday: { ...(state.teamActivityToday || {}), activity_type: 'oles', date: todayKey(), state: newState },
+        csapatToday: {
+          ...state.csapatToday,
+          oles: { activity_type: 'oles', date: todayKey(), state: newState },
+        },
       });
       if (syncReady && state.pairId) {
         await sync.upsertActivity(state.pairId, 'oles', todayKey(), null, () => newState);
       }
-      renderPickCard();
+      renderCsapatDetail('oles');
       break;
     }
 
     case 'complete-hug': {
-      const s = getTodayActivityState();
+      const s = getCsapatState('oles');
       const newState = { ...s, completed_at: new Date().toISOString(), completed_by: state.myMemberId };
       setState({
-        teamActivityToday: { ...(state.teamActivityToday || {}), state: newState },
+        csapatToday: {
+          ...state.csapatToday,
+          oles: { ...(state.csapatToday.oles || {}), state: newState },
+        },
       });
       if (syncReady && state.pairId) {
         await sync.upsertActivity(state.pairId, 'oles', todayKey(), null, prev => ({
@@ -2300,19 +2531,21 @@ document.addEventListener('click', async e => {
       }
       toast('szép ❤');
       stopHugTimerTick();
-      renderPickCard();
+      renderCsapatDetail('oles');
       break;
     }
 
     // ─── Rád gondolok ───────────────────────────────────────────────
     case 'send-gondolok': {
       const ping = { from: state.myMemberId, at: new Date().toISOString() };
-      const s = getTodayActivityState();
+      const s = getCsapatState('gondolok');
       const newState = { pings: [...(s.pings || []), ping] };
       setState({
-        teamActivityToday: { ...(state.teamActivityToday || {}), activity_type: 'gondolok', date: todayKey(), state: newState },
+        csapatToday: {
+          ...state.csapatToday,
+          gondolok: { activity_type: 'gondolok', date: todayKey(), state: newState },
+        },
       });
-      // gomb pulse
       const heartBtn = app.querySelector('.heart-btn');
       if (heartBtn) {
         heartBtn.classList.add('is-pulsing');
@@ -2323,7 +2556,7 @@ document.addEventListener('click', async e => {
           pings: [...(prev.pings || []), ping],
         }));
       }
-      renderPickCard();
+      renderCsapatDetail('gondolok');
       break;
     }
 
@@ -2331,21 +2564,27 @@ document.addEventListener('click', async e => {
     case 'send-hid': {
       const newState = { requester_id: state.myMemberId, requested_at: new Date().toISOString() };
       setState({
-        teamActivityToday: { ...(state.teamActivityToday || {}), activity_type: 'hid', date: todayKey(), state: newState },
+        csapatToday: {
+          ...state.csapatToday,
+          hid: { activity_type: 'hid', date: todayKey(), state: newState },
+        },
       });
       if (syncReady && state.pairId) {
         await sync.upsertActivity(state.pairId, 'hid', todayKey(), null, () => newState);
       }
       toast('elküldted ❤');
-      renderPickCard();
+      renderCsapatDetail('hid');
       break;
     }
 
     case 'accept-hid': {
-      const s = getTodayActivityState();
+      const s = getCsapatState('hid');
       const newState = { ...s, responder_id: state.myMemberId, accepted_at: new Date().toISOString() };
       setState({
-        teamActivityToday: { ...(state.teamActivityToday || {}), state: newState },
+        csapatToday: {
+          ...state.csapatToday,
+          hid: { ...(state.csapatToday.hid || {}), state: newState },
+        },
       });
       if (syncReady && state.pairId) {
         await sync.upsertActivity(state.pairId, 'hid', todayKey(), null, prev => ({
@@ -2353,7 +2592,47 @@ document.addEventListener('click', async e => {
         }));
       }
       toast('összekötöttünk ❤');
-      renderPickCard();
+      renderCsapatDetail('hid');
+      break;
+    }
+
+    // ─── Meditáció ──────────────────────────────────────────────────
+    case 'open-meditation-picker': {
+      navigate('meditation-picker');
+      break;
+    }
+    case 'open-meditation': {
+      const id = actionEl.dataset.meditId;
+      if (!id) return;
+      // bejön az intro screen-re
+      const med = meditations.find(m => m.id === id);
+      if (!med) return;
+      const totalSec = med.phases.reduce((sum, p) => sum + p.duration_sec, 0);
+      setState({
+        activeMedit: {
+          id: med.id,
+          title: med.title,
+          source: med.source,
+          intro: med.intro,
+          outro: med.outro,
+          phases: med.phases,
+          totalSec,
+          startedAt: null,
+          currentPhaseIdx: -1,
+        },
+      });
+      navigate('meditation-run');
+      break;
+    }
+    case 'start-meditation': {
+      if (state.activeMedit) startMeditation(state.activeMedit.id);
+      break;
+    }
+    case 'finish-meditation':
+    case 'exit-meditation': {
+      stopMeditationTick();
+      setState({ activeMedit: null });
+      navigate('home');
       break;
     }
 

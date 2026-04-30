@@ -205,16 +205,25 @@
       <div class="hero">
         <div class="pici-figure" data-pici-figure></div>
         <h2 class="pici-name" data-pici-name></h2>
-        <div class="hero-status">
-          <div class="status-dots"><span></span><span></span></div>
-          <span class="hero-status-text">ma mindketten itt</span>
+        <div class="hero-status" data-hero-status>
+          <div class="status-dots" data-status-dots><span data-dot-self></span><span data-dot-partner></span></div>
+          <span class="hero-status-text" data-status-text>ma mindketten itt</span>
         </div>
+        <button class="csapat-btn" data-action="open-csapat">+ csapat-funkciók</button>
+        <button class="medit-bubble" data-action="open-meditation-picker" data-medit-bubble hidden>elcsendesedünk?</button>
       </div>
 
-      <!-- Mai választás (csapat-funkció) — dinamikus tartalom -->
-      <div class="card card-pick" data-pick-card>
-        <div class="card-label" data-pick-label>Mai választás · csapat</div>
-        <div data-pick-body></div>
+      <!-- Mit mondana a másik (napi rituálé) -->
+      <div class="card card-mm" data-mm-card hidden>
+        <div class="card-label">Mit mondana a másik?</div>
+        <div class="mm-card-question" data-mm-card-question></div>
+        <div class="mm-card-status" data-mm-card-status></div>
+        <button class="btn-primary" data-action="open-mitmondana" data-mm-card-cta>megnyitom →</button>
+      </div>
+      <div class="card card-mm-done" data-mm-card-done hidden>
+        <div class="card-label">Mit mondana · megbeszéltétek ✓</div>
+        <div class="mm-card-done-text" data-mm-card-done-text></div>
+        <div class="question-done-meta">holnap új jön</div>
       </div>
 
       <!-- Mai feladat -->
@@ -461,6 +470,112 @@
       <p class="modal-hint">a párod köszönete neked:</p>
       <div class="hala-text" data-hala-text></div>
       <button class="btn-primary" data-action="ack-hala">Olvasod ❤</button>
+    </div>
+  </section>
+</template>
+
+<!-- 16. CSAPAT-funkciók modal -->
+<template id="screen-csapat">
+  <section class="screen screen-modal">
+    <header class="modal-header">
+      <button class="back-btn" data-action="back" aria-label="vissza">
+        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <h3 class="modal-title">csapat-funkciók</h3>
+      <span></span>
+    </header>
+    <div class="modal-body" data-csapat-body>
+      <p class="modal-hint">amit most jólesik — bármikor</p>
+      <button class="csapat-tile" data-action="csapat-pick" data-csapat-type="hala">
+        <span class="csapat-tile-emoji">🌸</span>
+        <span class="csapat-tile-text">
+          <span class="csapat-tile-title">Hála-üzenet</span>
+          <span class="csapat-tile-desc">egy konkrét köszönet</span>
+        </span>
+      </button>
+      <button class="csapat-tile" data-action="csapat-pick" data-csapat-type="hangulat">
+        <span class="csapat-tile-emoji">😊</span>
+        <span class="csapat-tile-text">
+          <span class="csapat-tile-title">Hangulat-megosztás</span>
+          <span class="csapat-tile-desc">egy emoji egymásnak</span>
+        </span>
+      </button>
+      <button class="csapat-tile" data-action="csapat-pick" data-csapat-type="oles">
+        <span class="csapat-tile-emoji">🤗</span>
+        <span class="csapat-tile-text">
+          <span class="csapat-tile-title">20 másodperces ölelés</span>
+          <span class="csapat-tile-desc">együtt csendben</span>
+        </span>
+      </button>
+      <button class="csapat-tile" data-action="csapat-pick" data-csapat-type="gondolok">
+        <span class="csapat-tile-emoji">❤</span>
+        <span class="csapat-tile-text">
+          <span class="csapat-tile-title">Rád gondolok</span>
+          <span class="csapat-tile-desc">egy szív-jelzés</span>
+        </span>
+      </button>
+      <button class="csapat-tile" data-action="csapat-pick" data-csapat-type="hid">
+        <span class="csapat-tile-emoji">🌉</span>
+        <span class="csapat-tile-text">
+          <span class="csapat-tile-title">Híd-jelzés</span>
+          <span class="csapat-tile-desc">„beszélnünk kéne"</span>
+        </span>
+      </button>
+    </div>
+  </section>
+</template>
+
+<!-- 17. CSAPAT-funkció · részlet (a kiválasztott típus inline) -->
+<template id="screen-csapat-detail">
+  <section class="screen screen-modal">
+    <header class="modal-header">
+      <button class="back-btn" data-action="back" aria-label="vissza">
+        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <h3 class="modal-title" data-csapat-detail-title></h3>
+      <span></span>
+    </header>
+    <div class="modal-body" data-csapat-detail-body></div>
+  </section>
+</template>
+
+<!-- 18. MEDITÁCIÓ · választó -->
+<template id="screen-meditation-picker">
+  <section class="screen screen-modal">
+    <header class="modal-header">
+      <button class="back-btn" data-action="back" aria-label="vissza">
+        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <h3 class="modal-title">meditáció</h3>
+      <span></span>
+    </header>
+    <div class="modal-body" data-meditation-list></div>
+  </section>
+</template>
+
+<!-- 19. MEDITÁCIÓ · futás -->
+<template id="screen-meditation-run">
+  <section class="screen screen-modal">
+    <header class="modal-header">
+      <button class="back-btn" data-action="exit-meditation" aria-label="megszakítás">
+        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <h3 class="modal-title" data-medit-title></h3>
+      <span></span>
+    </header>
+    <div class="modal-body modal-body-medit">
+      <div class="medit-source" data-medit-source></div>
+      <div class="medit-intro" data-medit-intro hidden></div>
+      <div class="medit-running" data-medit-running hidden>
+        <div class="medit-time" data-medit-time></div>
+        <div class="medit-phase" data-medit-phase></div>
+      </div>
+      <div class="medit-finished" data-medit-finished hidden>
+        <div class="medit-finished-msg">Köszönet egymásnak. ❤</div>
+        <div class="medit-outro" data-medit-outro></div>
+        <button class="btn-primary" data-action="finish-meditation">Bezárom</button>
+      </div>
+      <button class="btn-primary" data-action="start-meditation" data-medit-start-btn hidden>Indítom</button>
     </div>
   </section>
 </template>

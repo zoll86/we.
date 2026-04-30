@@ -1126,6 +1126,261 @@ input, textarea {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   v0.8 — Mit mondana napi kártya (visszaáll a v0.5 mintára)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.card-mm {
+  background: var(--bg-card-tint);
+  border-color: var(--accent-border);
+}
+.mm-card-question {
+  font-family: 'Yeseva One', serif;
+  font-size: 16.5px;
+  line-height: 1.34;
+  letter-spacing: -0.005em;
+  margin: 6px 0 10px;
+}
+.mm-card-status {
+  font-size: 11.5px;
+  color: var(--fg-soft);
+  margin-bottom: 12px;
+  letter-spacing: 0.02em;
+}
+.mm-card-status:empty { display: none; }
+.card-mm .btn-primary {
+  width: 100%;
+  padding: 11px;
+  font-size: 12.5px;
+}
+.card-mm-done {
+  background: transparent;
+  border: 0.5px dashed var(--line);
+  text-align: center;
+  padding: 16px;
+}
+.mm-card-done-text {
+  font-family: 'Yeseva One', serif;
+  font-size: 14px;
+  line-height: 1.3;
+  opacity: 0.7;
+  margin: 6px 0;
+  font-style: italic;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   v0.8 — Csapat-funkciók gomb + meditáció-buborék a Csillám alatt
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.csapat-btn {
+  display: block;
+  margin: 12px auto 0;
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 0.5px solid var(--line);
+  background: transparent;
+  color: var(--fg-soft);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.csapat-btn:active { border-color: var(--accent); color: var(--accent); }
+
+.medit-bubble {
+  display: block;
+  margin: 8px auto 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 0.5px dashed var(--accent-border);
+  background: transparent;
+  color: var(--accent);
+  font-family: 'Yeseva One', serif;
+  font-style: italic;
+  font-size: 12px;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  opacity: 0.85;
+  animation: bubble-pulse 4s ease-in-out infinite;
+}
+@keyframes bubble-pulse {
+  0%, 100% { opacity: 0.65; }
+  50% { opacity: 0.95; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Presence pöttyök (két dot a hero alatt)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.status-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: inline-block;
+  margin: 0 2px;
+  opacity: 0.25;
+  transition: opacity 0.3s, transform 0.3s;
+}
+.status-dots span.is-today { opacity: 0.5; }
+.status-dots span.is-online {
+  opacity: 1;
+  transform: scale(1.15);
+  animation: dot-pulse 2.5s ease-in-out infinite;
+}
+@keyframes dot-pulse {
+  0%, 100% { transform: scale(1.15); }
+  50% { transform: scale(1.3); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Csapat modal — pirulák
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.csapat-tile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px;
+  margin-bottom: 10px;
+  border-radius: 14px;
+  border: 0.5px solid var(--line);
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: left;
+}
+.csapat-tile:active {
+  border-color: var(--accent);
+  background: var(--bg-card-tint);
+}
+.csapat-tile-emoji {
+  font-size: 26px;
+  flex-shrink: 0;
+}
+.csapat-tile-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.csapat-tile-title {
+  font-family: 'Yeseva One', serif;
+  font-size: 15px;
+  letter-spacing: -0.005em;
+  color: var(--fg);
+}
+.csapat-tile-desc {
+  font-size: 11.5px;
+  color: var(--fg-soft);
+  letter-spacing: 0.02em;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Meditáció — választó + futás
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.medit-tile {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  border: 0.5px solid var(--line);
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: border-color 0.15s;
+  text-align: left;
+}
+.medit-tile:active { border-color: var(--accent); }
+.medit-tile-title {
+  font-family: 'Yeseva One', serif;
+  font-size: 14.5px;
+  letter-spacing: -0.005em;
+  color: var(--fg);
+  margin-bottom: 2px;
+}
+.medit-tile-source {
+  font-size: 10.5px;
+  color: var(--fg-soft);
+  letter-spacing: 0.02em;
+  font-style: italic;
+}
+.medit-tile-duration {
+  font-family: 'Yeseva One', serif;
+  font-size: 13px;
+  color: var(--accent);
+  letter-spacing: -0.005em;
+  flex-shrink: 0;
+}
+
+.modal-body-medit { display: flex; flex-direction: column; }
+.medit-source {
+  font-size: 11px;
+  color: var(--fg-soft);
+  letter-spacing: 0.04em;
+  font-style: italic;
+  text-align: center;
+  margin-bottom: 18px;
+}
+.medit-intro {
+  font-family: 'Yeseva One', serif;
+  font-size: 16px;
+  line-height: 1.45;
+  letter-spacing: -0.005em;
+  padding: 18px 20px;
+  background: var(--bg-card-tint);
+  border: 0.5px solid var(--accent-border);
+  border-radius: 14px;
+  margin-bottom: 24px;
+}
+.medit-running {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 30px 0;
+}
+.medit-time {
+  font-family: 'Yeseva One', serif;
+  font-size: 64px;
+  color: var(--accent);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.medit-phase {
+  font-family: 'Yeseva One', serif;
+  font-size: 17px;
+  line-height: 1.4;
+  text-align: center;
+  letter-spacing: -0.005em;
+  padding: 0 16px;
+  font-style: italic;
+}
+.medit-finished {
+  text-align: center;
+  padding: 30px 0;
+}
+.medit-finished-msg {
+  font-family: 'Yeseva One', serif;
+  font-size: 22px;
+  color: var(--accent);
+  letter-spacing: -0.005em;
+  margin-bottom: 14px;
+}
+.medit-outro {
+  font-family: 'Yeseva One', serif;
+  font-size: 14px;
+  font-style: italic;
+  line-height: 1.4;
+  letter-spacing: -0.005em;
+  margin-bottom: 24px;
+  opacity: 0.75;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    7. SUTTOGÁS-szerkesztő (modal)
    ═══════════════════════════════════════════════════════════════════════ */
 
