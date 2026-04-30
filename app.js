@@ -2623,6 +2623,18 @@ document.addEventListener('click', async e => {
       break;
     }
 
+    case 'open-jegyzet-from-question': {
+      // A jegyzet most a kérdés mellől nyílik. A szöveget üresen hagyjuk —
+      // de meg lehetne előtölteni a kérdéssel; jelenleg üres marad, hadd írja ki.
+      navigate('wish-add');
+      break;
+    }
+
+    case 'open-jegyzet-from-mm': {
+      navigate('wish-add');
+      break;
+    }
+
     case 'save-wish': {
       const textEl = app.querySelector('[data-wish-text-input]');
       const text = textEl?.value.trim();
