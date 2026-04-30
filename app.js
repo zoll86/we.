@@ -2056,6 +2056,21 @@ function renderMmReveal() {
   setText('[data-mm-self-guess]', t.myResponse?.guess);
   setText('[data-mm-partner-actual]', t.partnerResponse?.actual);
 
+  // státusz-banner: ha hiányzik a partner válasza, mutassuk meg
+  const statusEl = app.querySelector('[data-mm-reveal-status]');
+  const statusTextEl = app.querySelector('[data-mm-reveal-status-text]');
+  if (statusEl && statusTextEl) {
+    if (!t.partnerResponse) {
+      statusEl.hidden = false;
+      statusTextEl.textContent = `${state.partnerName || 'a párod'} válasza még nem érkezett meg — frissítsd vagy próbáld később`;
+    } else if (!t.myResponse) {
+      statusEl.hidden = false;
+      statusTextEl.textContent = 'a saját válaszod nem érkezett meg — frissítsd';
+    } else {
+      statusEl.hidden = true;
+    }
+  }
+
   const noteSection = app.querySelector('[data-mm-note-section]');
   const noteSaved = app.querySelector('[data-mm-note-saved]');
   if (t.note && noteSection && noteSaved) {
@@ -2883,6 +2898,21 @@ document.addEventListener('click', async e => {
         await sync.revealMitMondana(state.mmToday.sessionId, null);
       }
       navigate('mm-reveal');
+      break;
+    }
+
+    case 'refresh-mm': {
+      if (syncReady && state.pairId) {
+        toast('frissítés...');
+        await refreshMmFromServer();
+        renderMmReveal();
+        const t = state.mmToday;
+        if (t?.myResponse && t?.partnerResponse) {
+          toast('megvan ❤');
+        } else if (!t?.partnerResponse) {
+          toast(`${state.partnerName || 'a párod'} válasza még hiányzik`);
+        }
+      }
       break;
     }
 

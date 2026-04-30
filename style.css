@@ -1230,6 +1230,26 @@ input, textarea {
   animation: bubble-pop 0.3s ease-out;
 }
 .mood-popover[hidden] { display: none !important; }
+
+/* mm-reveal státusz-banner ha hiányzik az egyik válasz */
+.mm-reveal-status {
+  background: var(--bg-card-tint);
+  border: 0.5px dashed var(--accent-border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+.mm-reveal-status .modal-hint {
+  margin-bottom: 10px;
+  font-style: italic;
+}
+.mm-reveal-status .btn-ghost {
+  display: inline-block;
+  width: auto;
+  padding: 8px 18px;
+}
+.mm-reveal-status[hidden] { display: none; }
 .mood-popover .mood-btn {
   flex: 0 0 auto;
   width: 44px;
