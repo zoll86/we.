@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#FAF7F2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#281C14" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="we. — egy közös tér kettőtöknek">
+  <title>we.</title>
+
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+  <link rel="icon" href="assets/icon-192.png">
+
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preload" as="style" href="https://cdn.jsdelivr.net/npm/@fontsource/yeseva-one@latest/400.css">
+  <link rel="preload" as="style" href="https://cdn.jsdelivr.net/npm/@fontsource/manrope@latest/400.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/yeseva-one@latest/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/manrope@latest/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/manrope@latest/500.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<main id="app" aria-live="polite"></main>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     KÉPERNYŐK · template-ek (a router cseréli őket #app-ban)
+     ═══════════════════════════════════════════════════════════════════════ -->
+
+<!-- 1. ÜDVÖZLET -->
+<template id="screen-welcome">
+  <section class="screen screen-welcome">
+    <div class="welcome-content">
+      <div class="welcome-brand">we<span class="brand-dot">.</span></div>
+      <div class="welcome-title">Egy közös tér<br>kettőtöknek.</div>
+      <div class="welcome-sub">Kezdjük el együtt.</div>
+      <div class="welcome-buttons">
+        <button class="btn-primary" data-action="pair-create">Új páros indítása</button>
+        <button class="btn-ghost" data-action="pair-join">Csatlakozás kódhoz</button>
+      </div>
+      <div class="welcome-footer">Ezt érdemes egy szobában — nem chaten.</div>
+    </div>
+  </section>
+</template>
+
+<!-- 2. PÁROSÍTÁS — kód generálás (initiátor) -->
+<template id="screen-pair-create">
+  <section class="screen screen-pair">
+    <header class="pair-header">
+      <button class="back-btn" data-action="back" aria-label="vissza">
+        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="brand-small">we<span class="brand-dot">.</span></div>
+      <span></span>
+    </header>
+    <div class="pair-body">
+      <h2 class="pair-title">Mondd be neki<br>ezt a kódot:</h2>
+      <p class="pair-hint">hat számjegy — hangosan kimondva</p>
+      <div class="code-display" data-code></div>
+      <div class="waiting-dots"><span></span><span></span><span></span></div>
+      <p class="pair-helper">amíg ő be nem írja a másik telefonon</p>
+    </div>
+  </section>
+</template>
+
+<!-- 3. PÁROSÍTÁS — kód beírás (joiner) -->
+<template id="screen-pair-join">
+  <section class="screen screen-pair">
+    <header class="pair-header">
+      <button class="back-btn" data-action="back" aria-label="vissza">
+        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="brand-small">we<span class="brand-dot">.</span></div>
+      <span></span>
+    </header>
+    <div class="pair-body">
+      <h2 class="pair-title">Mit látsz<br>az ő készülékén?</h2>
+      <p class="pair-hint">üsd be a hat számjegyet</p>
+      <div class="code-input-row" data-code-input>
+        <input class="code-box" type="tel" inputmode="numeric" maxlength="1" autocomplete="off">
+        <input class="code-box" type="tel" inputmode="numeric" maxlength="1" autocomplete="off">
+        <input class="code-box" type="tel" inputmode="numeric" maxlength="1" autocomplete="off">
+        <input class="code-box" type="tel" inputmode="numeric" maxlength="1" autocomplete="off">
+        <input class="code-box" type="tel" inputmode="numeric" maxlength="1" autocomplete="off">
+        <input class="code-box" type="tel" inputmode="numeric" maxlength="1" autocomplete="off">
+      </div>
+      <p class="pair-helper">egyszer kell csak — onnantól együtt vagytok</p>
+      <p class="pair-error" data-error hidden>Ez a kód nem stimmel. Próbáld újra.</p>
+    </div>
+  </section>
+</template>
+
+<!-- 4. ELNEVEZÉS -->
+<template id="screen-naming">
+  <section class="screen screen-pair">
+    <header class="pair-header">
+      <span></span>
+      <div class="brand-small">we<span class="brand-dot">.</span></div>
+      <span></span>
+    </header>
+    <div class="pair-body">
+      <div class="naming-glow">
+        <svg width="86" height="86" viewBox="0 0 86 86" aria-hidden="true">
+          <circle cx="43" cy="43" r="38" fill="none" class="naming-ring-1"/>
+          <circle cx="43" cy="43" r="26" fill="none" class="naming-ring-2"/>
+          <circle cx="43" cy="43" r="14" class="naming-pulse"/>
+          <circle cx="43" cy="43" r="6" class="naming-core"/>
+        </svg>
+      </div>
+      <h2 class="pair-title">Most nevezzétek<br>el együtt.</h2>
+      <p class="pair-hint">úgyis ezt fogja viselni végig</p>
+      <input type="text" class="naming-input" data-name placeholder="adj nevet" maxlength="24">
+      <button class="btn-primary" data-action="naming-confirm">Így legyen</button>
+    </div>
+  </section>
+</template>
+
+<!-- 5. ÉRKEZÉS-animáció -->
+<template id="screen-arrival">
+  <section class="screen screen-arrival" data-action="arrival-skip">
+    <header class="arrival-header">
+      <div class="brand-small">we<span class="brand-dot">.</span></div>
+    </header>
+    <div class="arrival-canvas">
+      <div class="stars" aria-hidden="true"></div>
+      <svg class="arrival-svg" viewBox="0 0 280 380" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <g class="arrival-beam">
+          <defs>
+            <linearGradient id="beam-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" class="beam-stop-top"/>
+              <stop offset="100%" class="beam-stop-bottom"/>
+            </linearGradient>
+          </defs>
+          <path d="M 110 130 L 170 130 L 215 320 L 65 320 Z" fill="url(#beam-grad)"/>
+        </g>
+        <g class="arrival-ufo">
+          <g class="arrival-ufo-bob">
+            <ellipse cx="140" cy="92" rx="22" ry="18" fill="#FFD2BC" opacity="0.85"/>
+            <ellipse cx="135" cy="86" rx="6" ry="3" fill="#FFFFFF" opacity="0.6"/>
+            <ellipse cx="140" cy="105" rx="42" ry="11" fill="#1A1714"/>
+            <ellipse cx="140" cy="102" rx="42" ry="8" fill="#5C4A3A"/>
+            <circle cx="110" cy="105" r="2.5" class="ufo-light-1"/>
+            <circle cx="125" cy="108" r="2.5" class="ufo-light-2"/>
+            <circle cx="140" cy="109" r="2.5" class="ufo-light-3"/>
+            <circle cx="155" cy="108" r="2.5" class="ufo-light-4"/>
+            <circle cx="170" cy="105" r="2.5" class="ufo-light-5"/>
+          </g>
+        </g>
+        <g transform="translate(140, 295)">
+          <g class="arrival-naut">
+            <g class="arrival-naut-bob">
+              <ellipse cx="0" cy="22" rx="14" ry="2.5" fill="#000" opacity="0.4"/>
+              <ellipse cx="0" cy="11" rx="11" ry="14" class="naut-body"/>
+              <ellipse cx="-3" cy="6" rx="4" ry="6" fill="#FFF" opacity="0.25"/>
+              <line x1="-4" y1="-3" x2="-7" y2="-10" stroke="#1A1714" stroke-width="1.2" stroke-linecap="round"/>
+              <line x1="4" y1="-3" x2="7" y2="-10" stroke="#1A1714" stroke-width="1.2" stroke-linecap="round"/>
+              <circle cx="-7" cy="-11" r="2" class="naut-tip"/>
+              <circle cx="7" cy="-11" r="2" class="naut-tip"/>
+              <g class="naut-eye-blink">
+                <ellipse cx="-4" cy="4" rx="2.5" ry="3" fill="#1A1714"/>
+                <ellipse cx="4" cy="4" rx="2.5" ry="3" fill="#1A1714"/>
+                <circle cx="-3.3" cy="3" r="0.9" fill="#FFF"/>
+                <circle cx="4.7" cy="3" r="0.9" fill="#FFF"/>
+              </g>
+              <path d="M -3 11 Q 0 14 3 11" stroke="#1A1714" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+            </g>
+          </g>
+        </g>
+      </svg>
+    </div>
+    <div class="arrival-text">
+      <div class="arrival-name" data-pici-name></div>
+      <div class="arrival-meta">// épp most érkezett...</div>
+    </div>
+    <div class="arrival-skip-hint">tappints bárhova a kihagyáshoz</div>
+  </section>
+</template>
+
+<!-- 6. MINDENNAPOK · OTTHON -->
+<template id="screen-home">
+  <section class="screen screen-home">
+    <div class="home-scroll">
+      <header class="home-header">
+        <div class="brand-small">we<span class="brand-dot brand-pulse" data-brand-dot>.</span></div>
+        <button class="more-btn" data-action="open-journal" aria-label="naplónk">
+          <svg width="22" height="5" viewBox="0 0 22 5">
+            <circle cx="2.5" cy="2.5" r="1.7" fill="currentColor"/>
+            <circle cx="11" cy="2.5" r="1.7" fill="currentColor"/>
+            <circle cx="19.5" cy="2.5" r="1.7" fill="currentColor"/>
+          </svg>
+        </button>
+      </header>
+
+      <!-- Suttogó -->
+      <div class="whisper-section" data-whisper>
+        <p class="whisper-empty">még nincs suttogás — küldj egyet</p>
+      </div>
+      <button class="whisper-compose-btn" data-action="compose-whisper">+ suttogás</button>
+
+      <!-- Hero / Csillám -->
+      <div class="hero">
+        <div class="pici-figure" data-pici-figure></div>
+        <h2 class="pici-name" data-pici-name></h2>
+        <div class="hero-status">
+          <div class="status-dots"><span></span><span></span></div>
+          <span class="hero-status-text">ma mindketten itt</span>
+        </div>
+      </div>
+
+      <!-- Mai feladat -->
+      <div class="card card-task">
+        <div class="task-head">
+          <span class="card-label">Ma tőled</span>
+          <button class="task-skip" data-action="skip-task" aria-label="más feladatot kérek">
+            <svg viewBox="0 0 16 16" width="13" height="13"><path d="M 13 4 A 6 6 0 1 0 14 9" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M 13 1 L 13 4 L 10 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <div class="task-text" data-task-text></div>
+        <div class="task-row">
+          <span class="task-meta" data-task-meta></span>
+          <button class="task-done-btn" data-action="task-done">megcsináltam</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</template>
+
+<!-- 7. SUTTOGÁS megírás (modal-szerű) -->
+<template id="screen-whisper-compose">
+  <section class="screen screen-modal">
+    <header class="modal-header">
+      <button class="back-btn" data-action="back" aria-label="vissza">
+        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <h3 class="modal-title">suttogás</h3>
+      <span></span>
+    </header>
+    <div class="modal-body">
+      <p class="modal-hint">max. 80 karakter — egyszerre csak egy aktív</p>
+      <textarea class="whisper-input" data-whisper-input maxlength="80" placeholder="..."></textarea>
+      <div class="whisper-meta-row">
+        <span class="whisper-counter" data-counter>80</span>
+      </div>
+      <button class="btn-primary" data-action="send-whisper">elküldöm</button>
+    </div>
+  </section>
+</template>
+
+<!-- 8. NAPLÓNK · alap-keret (a fülek tartalmát később bővítjük) -->
+<template id="screen-journal">
+  <section class="screen screen-journal">
+    <header class="journal-header">
+      <button class="back-btn" data-action="back" aria-label="vissza">
+        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <h2 class="journal-title">Naplónk</h2>
+      <span></span>
+    </header>
+    <nav class="tabs" data-tabs>
+      <button class="tab" data-tab="vagyak">Vágyak</button>
+      <button class="tab" data-tab="suttogasok">Suttogások</button>
+      <button class="tab is-active" data-tab="feladatok">Feladatok</button>
+      <button class="tab" data-tab="kerdesek">Kérdések</button>
+    </nav>
+    <div class="journal-scroll" data-tab-content></div>
+  </section>
+</template>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     STATE / ÉRTESÍTÉSEK
+     ═══════════════════════════════════════════════════════════════════════ -->
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
