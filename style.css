@@ -1126,6 +1126,174 @@ input, textarea {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   v0.9 — Csillám-buborék (comic-style speech bubble)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.csillam-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.csillam-bubble {
+  position: absolute;
+  top: 0;
+  right: -8px;
+  transform: translate(50%, -10%);
+  max-width: 200px;
+  background: var(--bg-card);
+  border: 1px solid var(--accent-border);
+  border-radius: 18px;
+  padding: 10px 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  animation: bubble-pop 0.4s ease-out;
+  cursor: pointer;
+  z-index: 4;
+}
+@keyframes bubble-pop {
+  0% { transform: translate(50%, -10%) scale(0.4); opacity: 0; }
+  60% { transform: translate(50%, -10%) scale(1.05); opacity: 1; }
+  100% { transform: translate(50%, -10%) scale(1); opacity: 1; }
+}
+.csillam-bubble-content {
+  font-family: 'Yeseva One', serif;
+  font-style: italic;
+  font-size: 13.5px;
+  line-height: 1.32;
+  letter-spacing: -0.005em;
+  color: var(--fg);
+}
+.csillam-bubble-content.is-emoji {
+  font-size: 28px;
+  font-style: normal;
+  line-height: 1;
+  text-align: center;
+}
+.csillam-bubble-content.is-suggest {
+  text-align: center;
+}
+.csillam-bubble-tail {
+  position: absolute;
+  bottom: -7px;
+  left: 14px;
+  width: 14px;
+  height: 14px;
+  background: var(--bg-card);
+  border-right: 1px solid var(--accent-border);
+  border-bottom: 1px solid var(--accent-border);
+  transform: rotate(45deg);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   v0.9 — Csillám akció-ikonok (❤ ·  😊)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.csillam-actions {
+  display: flex;
+  gap: 18px;
+  justify-content: center;
+  margin-top: 8px;
+}
+.csillam-action {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 0.5px solid var(--line);
+  background: transparent;
+  font-size: 18px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.csillam-action:active {
+  transform: scale(0.92);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.csillam-action.is-pulsing { animation: heart-pulse 0.6s ease-out; }
+
+.mood-popover {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--bg-card);
+  border: 0.5px solid var(--line);
+  border-radius: 14px;
+  animation: bubble-pop 0.3s ease-out;
+}
+.mood-popover .mood-btn {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  font-size: 22px;
+  padding: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   v0.9 — Ölelés countdown
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.hug-timer-wrap {
+  text-align: center;
+  padding: 30px 0;
+}
+.hug-timer-sub {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-soft);
+  margin-top: 6px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   v0.9 — Meditáció-suggest képernyő (régi app stílus)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.medit-pose-figure {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 30px 0;
+  min-height: 140px;
+}
+.medit-pose-figure svg { display: block; }
+.medit-cta-primary { width: 100%; margin-top: 8px; }
+.medit-cta-secondary, .medit-cta-tertiary {
+  width: 100%;
+  margin-top: 8px;
+  background: transparent;
+  border: 0.5px solid var(--line);
+  color: var(--fg-soft);
+  letter-spacing: 0.04em;
+  font-size: 12.5px;
+  padding: 12px;
+  border-radius: 999px;
+}
+.medit-cta-tertiary { color: var(--fg-softer); }
+
+/* meditáció-poza animációk */
+.pici-meditate-bob {
+  animation: piciMeditate 4s ease-in-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+@keyframes piciMeditate {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1.5px); }
+}
+.medit-aura { animation: aura-pulse 4s ease-in-out infinite; }
+@keyframes aura-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    v0.8 — Mit mondana napi kártya (visszaáll a v0.5 mintára)
    ═══════════════════════════════════════════════════════════════════════ */
 

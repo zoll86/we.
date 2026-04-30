@@ -2,134 +2,129 @@
 
 > Egy közös tér kettőtöknek.
 
-**Aktuális verzió:** v0.8 — Architektúra-átalakítás. Mit mondana napi fix kártya, csapat-funkciók modal-ban (nem napi sorsolt), 12 vezetett páros-meditáció esti rituáléként, élő presence (ki mikor van fent).
+**Aktuális verzió:** v0.9 — Csillám-buborék rendszer. A csapat-funkciók eltűntek (modal megszűnt), helyette a kis figura mellett megjelenő képregény-buborék mutatja az üzeneteket. Hála-üzenet és 20 mp ölelés sorsolható feladatként, esti meditáció-javaslat 21h körül a buborékban.
 
-## ⚙️ V0.8 frissítés (ha most v0.7-ről jössz)
+## ⚙️ V0.9 frissítés (ha most v0.8.1-ről jössz)
 
-### 1. SQL migráció — egy új mező a pairs táblába
+### 1. SQL migráció — egy új tábla a csillám-buborékoknak
 
 Supabase → SQL Editor → New query:
 
 ```sql
-alter table pairs add column if not exists last_seen jsonb default '{}'::jsonb;
+create table if not exists csillam_messages (
+  id uuid primary key default gen_random_uuid(),
+  pair_id uuid references pairs(id) on delete cascade,
+  author_id text not null,
+  type text not null,
+  payload jsonb not null,
+  created_at timestamptz default now(),
+  delivery_at timestamptz not null,
+  expires_at timestamptz
+);
+
+create index if not exists csillam_messages_pair_delivery on csillam_messages (pair_id, delivery_at desc);
+
+alter publication supabase_realtime add table csillam_messages;
+alter table csillam_messages enable row level security;
+
+do $$ begin
+  if not exists (select 1 from pg_policies where tablename = 'csillam_messages' and policyname = 'open_csillam_messages') then
+    create policy "open_csillam_messages" on csillam_messages for all using (true) with check (true);
+  end if;
+end $$;
 ```
 
-Ez minden — egyetlen mező a presence-hez.
+### 2. Fájlok cseréje
 
-### 2. Fájlok cseréje a repo-ban
-
-Cserélendő:
 - `app.js`, `index.html`, `style.css`, `lib/sync.js`, `sw.js`, `supabase-schema.sql`, `README.md`
+- `data/feladatok.js` (új: hala/oles típusok)
 
-⭐ Új fájl: `data/meditations.js` (12 strukturált páros-meditáció)
-
-A `config.js`, többi `data/`, `pool-peldak/` változatlan.
+A `config.js`, `data/meditations.js`, `data/kerdesek.js`, `data/mitmondana.js` változatlan.
 
 ```bash
 git add .
-git commit -m "we. v0.8 — architektúra átalakítás + meditációk + presence"
+git commit -m "we. v0.9 — Csillám-buborék rendszer"
 git push
 ```
 
-A localStorage kulcs verziót váltottam (`we-state-v7` → `we-state-v8`), mindkét telefonon **újra kell párosítani**.
+A localStorage kulcs verziót váltottam (`we-state-v8-1` → `we-state-v9`) — mindkét telefonon **újra kell párosítani**.
 
-## Mi az új (v0.8) — és mi MENT EL
+## Mi az új (v0.9)
 
-### MENT EL: Mai választás napi sorsolás
-A v0.7-es Mai választás random sorsolás (napi 1 funkció a 6-ból) elment. Helyette:
-- **Mit mondana visszakerült napi rituálénak** (saját kártya a home-on, mint v0.5-ben). Mindennap egy.
-- A 4 másik csapat-funkció (Hála / Hangulat / Ölelés / Rád gondolok / Híd) áthelyezve a **csapat-funkciók modal-ba** — bármikor választható, nem napi sorsolt.
+### A csapat-funkciók modal MEG**SZŰNT**
+A v0.8-as „+ csapat-funkciók" gomb és modal eltűnt. A 6 funkció szétoszlott:
+- **Hála-üzenet** → sorsolható mai feladatként
+- **20 mp ölelés** → sorsolható mai feladatként
+- **Hangulat-megosztás** → 😊 ikon a Csillám alatt → buborék
+- **Rád gondolok** → ❤ ikon a Csillám alatt → buborék
+- **Híd-jelzés** → kihagyva (egyelőre)
+- **Meditáció-javaslat** → esti buborékban (21h körül)
 
-### Új a Csillám alatt
-A Csillám figura alá két új elem került:
-- **„+ csapat-funkciók"** gomb — mindig elérhető. Tap → modal 5 pirulával.
-- **„elcsendesedünk?" buborék** — csak este 19–22 óra között jelenik meg halványan. Tap → meditáció-választó.
+### Új a Csillám szekció
+A Csillám figura mellett-felett egy kép-regény stílusú **beszéd-buborék** jelenik meg amikor van aktív üzenet. Alatta két diszkrét akció-ikon:
+- **❤** → tap → instant „rád gondolok" → mindkét telefonon a Csillám buborékjában megjelenik a ❤ (3 órán át látszik)
+- **😊** → tap → kis emoji-választó (😊 😐 😔 😴 🌟) → instant hangulat → mindkét telefonon a buborékban (12 órán át)
 
-### Csapat-funkciók modal
-Tap a „+ csapat-funkciók"-ra → 5 pirula:
-- 🌸 **Hála-üzenet** — egy konkrét köszönet
-- 😊 **Hangulat-megosztás** — egy emoji egymásnak
-- 🤗 **20 másodperces ölelés** — együtt csendben
-- ❤ **Rád gondolok** — egy szív-jelzés
-- 🌉 **Híd-jelzés** — „beszélnünk kéne"
+A buborék mindkét fél telefonján ugyanazt mutatja — a Csillám közöttük lakik, ő mondja.
 
-Bármikor tappolhatod bármelyiket. Az állapotok ugyanúgy szinkronizálódnak a két telefon között, mint v0.7-ben. A különbség: nem napi sorsolt, és bármikor új-rakezdhető (van „új …" gomb minden funkcióban a kész állapot után).
+### Hála-üzenet — időkapszula-szerű kézbesítés
+Amikor a Mai feladat sorsolt egy `hala` típusút (pl. „Írj egy hála-üzenetet — egy konkrét dolog amit ma a párodnál értékelsz."):
+1. Tap a feladat-kártyán „írok →"
+2. Egy modalban beírod a köszönetet
+3. „Csillámra bízom ❤" — a feladatot teljesítettnek jelöli
+4. Csillám őrzi és **random pillanatban (1–12 óra múlva, 8–22 közötti ablakban)** átadja
+5. Mindkét telefonon hirtelen megjelenik a buborékban — egy meglepetés
 
-### 🧘 Esti meditáció — a flagship új gameplay
+Ha az írás éjszaka történne vagy késő este, a delivery automatikusan átcsúszik a következő napra (8–22h közötti random ablakba).
 
-A „elcsendesedünk?" buborék 19–22 óra között jelenik meg a Csillám alatt. Tap → meditáció-választó (12 darab).
+10 különböző hála-feladat-szöveg sorsolódik a poolból.
 
-**A 12 meditáció**:
-1. Szinkron-légzés (5 perc, 3 fázis)
-2. Szemkontaktus (5 perc)
-3. Tonglen — ajándékozó légzés (8 perc)
-4. Szív-érintés (6 perc, 3 fázis)
-5. Loving-kindness — egymásra (8 perc, 2 fázis)
-6. Test-pásztázás közösen (10 perc)
-7. Háttal háttnak (7 perc, 3 fázis)
-8. Sétáló meditáció (10 perc, 2 fázis)
-9. Tartózkodó ölelés (5 perc)
-10. Hála-meditáció a párnak (5 perc, 5 fázis)
-11. Csendes együtt-ülés (10 perc)
-12. Hullám-légzés (8 perc)
+### 20 mp ölelés — sorsolható feladat
+Amikor a Mai feladat sorsolt egy `oles` típusút (pl. „20 másodperces ölelés ma — amikor mindketten otthon vagytok."):
+1. Tap a feladat-kártyán „indítom →"
+2. 20 másodperc countdown — ölelés közben fut
+3. Bell hang amikor lejárt
+4. „megcsináltuk ❤" gomb → feladat lezárva
 
-**Hogy működik:**
-1. Választasz egyet → bevezető-képernyő (forrás, időtartam, intro szöveg)
-2. „Indítom" → futás-képernyő nagy időzítővel
-3. Minden fázisnál átírja a szöveget („Egyikőtök vezet…" / „Cseréljetek…" / „Az utolsó perc együtt…")
-4. Fázis-átmenetnél **csenget** egy lágy bowl-szerű hang (Web Audio API-val generált, nem zavaró)
-5. A végén egy záró csengetés + outro szöveg + „Bezárom" gomb
+5 különböző ölelés-feladat-szöveg.
 
-**Pl. Szinkron-légzés**: 2 perc egyikőtök vezet → CSENG → 2 perc másik vezet → CSENG → 1 perc együtt → CSENG (vége).
+### Esti meditáció-javaslat — buborékban
+Este 21:00–22:00 között a Csillám automatikusan megjelenít egy meditáció-javaslatot a buborékban, pl. „ma a szinkron-légzést javaslom".
 
-A 12-es pool a régi Pici alkalmazásból. Később tetszőleges méretre bővíthetjük (későbbi verziókban a többi pool-hoz hasonlóan feltölthetővé lehet tenni).
+Tap a buborékon → meditáció-javaslat képernyő (a régi Pici app stílusában):
+- Csillám meditáló-pózban (lótusz, behunyt szem, mosoly) megjelenik
+- Cím + forrás + bevezető szöveg
+- **✓ Kipróbáltuk** → meditáció elindul (futás-képernyő, fázis-csengetésekkel)
+- **↻ Mást javasolj** → újra sorsol egy másikat
+- **Bezárás** → vissza a home-ra
 
-### 🟢 Élő presence
-A Csillám alatt látható két korall pötty most **élve** mutatja, ki van fent:
-- **Halvány pötty (0.5)** — ma volt itt (legalább egyszer megnyitotta ma)
-- **Élénk + pulzáló pötty** — épp most online (Supabase Realtime presence-en keresztül)
-- **Nincs megjelenítve** — sem ma nem volt, sem épp most
+Meditáció közben a Csillám figura **meditáló-pózba vált** (a home-on és a futás-képernyőn is). Vége után visszavált a normál pózba.
 
-Plusz a státusz-szöveg is dinamikusan változik: „épp itt vagytok mindketten" / „ma mindketten itt" / „csak te vagy itt ma".
+### Híd-jelzés — kihagyva
+A Híd-jelzés (📞 „beszélnünk kéne") egyelőre nem szerepel a v0.9-ben. Visszahozható később.
 
-A presence-t Supabase Realtime presence csatorna kezeli (nem polling) — minimális overhead, valós idejű.
+## Adatfolyam
 
-## Mi szinkron a két telefon között
-
-| Funkció | Mit csinál |
+| Funkció | Hová ír |
 |---|---|
-| Párosítás, Csillám neve, szint-választás | UPDATE pairs |
-| Suttogás (gyűjtődik) | INSERT whispers |
-| Mai feladat teljesítése | INSERT feladat_log |
-| Mai kérdés megbeszélése | INSERT kerdesek |
-| Vágy hozzáadása / beteljesítése | INSERT/UPDATE vagyak |
-| Mit mondana session + válaszok | INSERT mit_mondana_sessions + responses |
-| Mit mondana felfedés | UPDATE mit_mondana_sessions |
-| Saját pool feltöltés | UPDATE pairs.custom_pools |
-| 5 csapat-funkció állapota | UPSERT team_activities |
-| **Presence (épp most)** | Supabase Realtime presence csatorna |
-| **Presence (ma volt itt)** | UPDATE pairs.last_seen |
-| Téma-választás, meditáció (helyi) | csak helyileg |
+| ❤ rád gondolok / 😊 hangulat / hála | **csillam_messages** tábla (azonnal vagy késleltetett delivery_at-tel) |
+| Mai feladat hala/oles teljesítve | **feladat_log** + (hala esetén) **csillam_messages** |
+| Meditáció (helyi) | csak helyileg, nem mentődik |
+| Pici név, suttogás, kérdés, vágy, mit-mondana | mint v0.8.1 |
 
-## Mi NINCS v0.8-ban
+A buborék-üzenetek 1–12 órán át láthatók (típusonként eltérő `expires_at`). A legfrissebb aktív üzenet jelenik meg.
 
-- A meditációknak nincs archív vagy számláló (nem mentődik el a szerverre, hogy melyik volt)
-- Nincs partner-jelzés meditáció közben („ő is meditál épp"). Esetleg v0.9-ben.
-- Magányos pillanat alt-Mindennapok: kihagyva (nem volt szükség)
+## Mi NINCS v0.9-ben
 
-## Mi jön (v0.9)
+- Híd-jelzés
+- Meditáció szerver-oldali logging (nincs partner-jelzés „ő is meditál")
+- Hála-üzenet „úton ❤" indikátor a saját telefonon (rejtett meglepetés mindkettőtöknek)
 
-Emlékek + idő-funkciók:
-- **Visszhang** — egy gondolatot Pici „őrzi" és valamikor random átadja
-- **Évforduló-szellem** — ha egy év múlva ugyanaznap volt valami emlékezetes
-- **Zenei időkapszula** — egy dal egy emlékkel
-- **Színes nap** — közös szín a napra
-- **Párhuzamos pillanat** — random kérdés napjában egyszer mindkettőtöknél
+## Mi jön (v0.10)
 
-## Mi jön később
-
-- v0.10: Polish + Auth + szigorúbb RLS
-- v1.0+: Mélyvíz mód
+- Polish + Auth + szigorúbb RLS
+- Esetleg Híd-jelzés visszahozás
+- Visszhang, Évforduló-szellem, Zenei időkapszula, Színes nap (a tervezetből)
 
 ---
 

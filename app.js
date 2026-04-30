@@ -11,7 +11,7 @@ import * as sync from './lib/sync.js';
 
 // ─── State ──────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'we-state-v8';
+const STORAGE_KEY = 'we-state-v9';
 
 const defaultState = {
   myMemberId: null,
@@ -39,14 +39,19 @@ const defaultState = {
   mmArchive: [],
   themePref: 'auto',
   customPools: {},
-  // v0.8 — csapat-funkciók típus szerint (nem napi rotáció)
-  csapatToday: {},        // { hala: {state}, hangulat: {state}, oles: {state}, gondolok: {state}, hid: {state} }
-  csapatActiveType: null, // melyik típus van épp megnyitva a modalban
+  partnerName: null,
   // presence
   partnerOnline: false,
   partnerSeenToday: false,
-  // meditáció (helyi futás)
-  activeMedit: null,      // { id, title, phases, intro, outro, source, totalSec, startedAt, currentPhaseIdx, phaseEndsAt }
+  // meditáció
+  activeMedit: null,
+  meditSuggestId: null,         // mai sorsolt meditáció — a Csillám esti javaslatához
+  // v0.9 — Csillám-buborék
+  activeBubble: null,           // { id, type, payload, deliveryAt, expiresAt }
+  pendingBubbleMessages: [],    // jövőbeli kézbesítések (időzítendő)
+  moodPickerOpen: false,
+  // ölelés (helyi futás)
+  olesStartedAt: null,
   hasSeenArrival: false,
 };
 
@@ -221,7 +226,7 @@ const syncCallbacks = {
           },
         ],
       });
-      toast(`${state.piciName || 'a párod'}: csinált egyet ❤`);
+      toast(`${state.partnerName || 'a párod'}: csinált egyet ❤`);
     }
     if (currentScreen === 'journal') renderJournalTab(currentTab);
   },
@@ -308,31 +313,36 @@ const syncCallbacks = {
           },
         });
         if (s.revealed_at) {
-          // ha a partner felfedte, archívba is rakjuk
-          if (!state.mmArchive.some(e => e.sessionId === s.id)) {
-            const archEntry = {
-              sessionId: s.id,
-              questionId: s.question_id,
-              question: s.question,
-              date: s.date,
-              revealedAt: new Date(s.revealed_at).getTime(),
-              note: s.note,
-              myGuess: state.mmToday.myResponse?.guess || '',
-              myActual: state.mmToday.myResponse?.actual || '',
-              partnerGuess: state.mmToday.partnerResponse?.guess || '',
-              partnerActual: state.mmToday.partnerResponse?.actual || '',
-            };
-            setState({ mmArchive: [archEntry, ...state.mmArchive] });
-          }
-          if (currentScreen === 'home') renderMmCard();
-          if (currentScreen === 'mm-status') {
-            navigate('mm-reveal');
-          } else if (currentScreen === 'mm-reveal') {
-            renderMmReveal();
-          }
-          if (currentScreen === 'journal' && currentTab === 'kerdesek') {
-            renderJournalTab('kerdesek');
-          }
+          // ROBOSZTUS: ha felfedés történt, MINDIG újrahidratáljuk a teljes adatot
+          // a serverről. Így biztos hogy mind a 4 válasz látszik mindkét telefonon.
+          refreshMmFromServer().then(() => {
+            // archív frissítése a teljes server-state-ből
+            const t = state.mmToday;
+            if (t && t.revealedAt && !state.mmArchive.some(e => e.sessionId === t.sessionId)) {
+              const archEntry = {
+                sessionId: t.sessionId,
+                questionId: t.questionId,
+                question: t.question,
+                date: t.date,
+                revealedAt: t.revealedAt,
+                note: t.note,
+                myGuess: t.myResponse?.guess || '',
+                myActual: t.myResponse?.actual || '',
+                partnerGuess: t.partnerResponse?.guess || '',
+                partnerActual: t.partnerResponse?.actual || '',
+              };
+              setState({ mmArchive: [archEntry, ...state.mmArchive] });
+            }
+            if (currentScreen === 'home') renderMmCard();
+            if (currentScreen === 'mm-status') {
+              navigate('mm-reveal');
+            } else if (currentScreen === 'mm-reveal') {
+              renderMmReveal();
+            }
+            if (currentScreen === 'journal' && currentTab === 'kerdesek') {
+              renderJournalTab('kerdesek');
+            }
+          });
         }
       }
     }
@@ -358,8 +368,10 @@ const syncCallbacks = {
     if (currentScreen === 'home') renderMmCard();
     if (currentScreen === 'mm-status') renderMmStatus();
     if (!isFromMe) {
-      toast(`${state.piciName || 'a párod'}: válaszolt ❤`);
+      toast(`${state.partnerName || 'a párod'}: válaszolt ❤`);
     }
+    // auto-reveal: ha mindkét válasz megérkezett és még nincs felfedve
+    maybeAutoReveal();
   },
 
   onTeamActivity(payload) {
@@ -376,14 +388,14 @@ const syncCallbacks = {
 
     const newState = ta.state || {};
     if (type === 'hala' && newState.author_id && !isMyId(newState.author_id) && !wasState.author_id) {
-      toast(`${state.piciName || 'a párod'}: hála-üzenet ❤`);
+      toast(`${state.partnerName || 'a párod'}: hála-üzenet ❤`);
     } else if (type === 'hangulat') {
       const hadPartnerB = wasState.b_id && !isMyId(wasState.b_id);
       const hasPartnerB = newState.b_id && !isMyId(newState.b_id);
       const hadPartnerA = wasState.a_id && !isMyId(wasState.a_id);
       const hasPartnerA = newState.a_id && !isMyId(newState.a_id);
       if ((hasPartnerB && !hadPartnerB) || (hasPartnerA && !hadPartnerA)) {
-        toast(`${state.piciName || 'a párod'}: hangulat ✓`);
+        toast(`${state.partnerName || 'a párod'}: hangulat ✓`);
       }
     } else if (type === 'oles') {
       if (newState.started_at && !wasState.started_at) toast('öleljetek 20 mp-ig ❤');
@@ -392,19 +404,50 @@ const syncCallbacks = {
       const newPings = (newState.pings || []).length;
       if (newPings > oldPings) {
         const lastPing = newState.pings[newPings - 1];
-        if (!isMyId(lastPing.from)) toast(`${state.piciName || 'a párod'}: rád gondol ❤`);
+        if (!isMyId(lastPing.from)) toast(`${state.partnerName || 'a párod'}: rád gondol ❤`);
       }
     } else if (type === 'hid') {
       if (newState.requester_id && !isMyId(newState.requester_id) && !wasState.requester_id) {
-        toast(`${state.piciName || 'a párod'}: híd-jelzést küldött ❤`);
+        toast(`${state.partnerName || 'a párod'}: híd-jelzést küldött ❤`);
       } else if (newState.responder_id && !isMyId(newState.responder_id) && !wasState.responder_id) {
-        toast(`${state.piciName || 'a párod'}: hallgat ❤`);
+        toast(`${state.partnerName || 'a párod'}: hallgat ❤`);
       }
     }
+    // v0.9: csapat-detail screen elment, csak a buborékot frissítjük
+  },
 
-    // ha a megnyitott csapat-detail típus változott, frissítsük
-    if (currentScreen === 'csapat-detail' && state.csapatActiveType === type) {
-      renderCsapatDetail(type);
+  // v0.9: Csillám-buborék üzenet érkezett (realtime)
+  onCsillamMessage(payload) {
+    const ev = payload.eventType;
+    if (ev === 'DELETE') return;
+    if (!payload.new) return;
+    const m = payload.new;
+    const msg = {
+      id: m.id,
+      type: m.type,
+      payload: m.payload || {},
+      deliveryAt: new Date(m.delivery_at).getTime(),
+      expiresAt: m.expires_at ? new Date(m.expires_at).getTime() : null,
+    };
+    const now = Date.now();
+    if (msg.deliveryAt <= now) {
+      // azonnal kézbesítendő
+      setBubble(msg);
+      // toast a partneré
+      if (m.author_id !== state.myMemberId) {
+        if (msg.type === 'hala') {
+          toast(`${state.partnerName || 'a párod'}: hála ❤`);
+        } else if (msg.type === 'hangulat') {
+          toast(`${state.partnerName || 'a párod'}: ${msg.payload?.emoji || '😊'}`);
+        } else if (msg.type === 'gondolok') {
+          toast(`${state.partnerName || 'a párod'}: rád gondol ❤`);
+        }
+      }
+    } else {
+      // jövőbeli kézbesítés — időzítéshez tárljuk
+      const pending = state.pendingBubbleMessages.filter(p => p.id !== msg.id);
+      setState({ pendingBubbleMessages: [...pending, msg] });
+      schedulePendingBubbles();
     }
   },
 };
@@ -534,15 +577,29 @@ async function hydrateFromServer() {
     mmArchive: mmAll.map(({ session, responses }) => hydrateMmArchiveEntry(session, responses)),
   });
 
-  // v0.8: mind az 5 csapat-típus mai állapotát betöltjük párhuzamosan
-  const csapatResults = await Promise.all(
-    CSAPAT_TYPES.map(t => sync.loadTodayActivity(state.pairId, t, todayKey()))
-  );
-  const csapatToday = {};
-  CSAPAT_TYPES.forEach((t, i) => {
-    if (csapatResults[i]) csapatToday[t] = csapatResults[i];
+  // v0.9: aktív + pending Csillám-buborék üzenetek
+  const activeMsg = await sync.loadActiveCsillamMessage(state.pairId);
+  if (activeMsg) {
+    setState({
+      activeBubble: {
+        id: activeMsg.id,
+        type: activeMsg.type,
+        payload: activeMsg.payload || {},
+        deliveryAt: new Date(activeMsg.delivery_at).getTime(),
+        expiresAt: activeMsg.expires_at ? new Date(activeMsg.expires_at).getTime() : null,
+      },
+    });
+  }
+  const pendingMsgs = await sync.loadPendingCsillamMessages(state.pairId);
+  setState({
+    pendingBubbleMessages: pendingMsgs.map(m => ({
+      id: m.id,
+      type: m.type,
+      payload: m.payload || {},
+      deliveryAt: new Date(m.delivery_at).getTime(),
+      expiresAt: m.expires_at ? new Date(m.expires_at).getTime() : null,
+    })),
   });
-  setState({ csapatToday });
 
   // v0.8: presence — ma volt itt jelölés (last_seen)
   if (pair?.last_seen && state.partnerMemberId) {
@@ -642,15 +699,10 @@ function back() {
     navigate('journal');
   } else if (currentScreen === 'mm-input' || currentScreen === 'mm-status' || currentScreen === 'mm-reveal') {
     navigate('home');
-  } else if (currentScreen === 'hala-compose' || currentScreen === 'hala-view') {
+  } else if (currentScreen === 'hala-write' || currentScreen === 'oles-run') {
+    stopOlesTimer();
     navigate('home');
-  } else if (currentScreen === 'csapat') {
-    navigate('home');
-  } else if (currentScreen === 'csapat-detail') {
-    setState({ csapatActiveType: null });
-    stopHugTimerTick();
-    navigate('csapat');
-  } else if (currentScreen === 'meditation-picker') {
+  } else if (currentScreen === 'meditation-suggest' || currentScreen === 'meditation-picker') {
     navigate('home');
   } else if (currentScreen === 'meditation-run') {
     stopMeditationTick();
@@ -873,6 +925,37 @@ async function copyPoolPrompt(type) {
 // ─── Pici figura SVG-k szakaszonként ──────────────────────────────────
 
 function piciSVG(stage) {
+  if (stage === 'meditate') {
+    // Lótusz-pozíció a régi Pici alapján — behunyt szem, mosoly, kéz a térden
+    return `
+      <svg width="130" height="130" viewBox="0 0 100 110" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <defs>
+          <radialGradient id="aura-grad" cx="50%" cy="55%" r="50%">
+            <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.18"/>
+            <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <circle cx="50" cy="55" r="44" fill="url(#aura-grad)" class="medit-aura"/>
+        <g transform="translate(50, 55)">
+          <g class="pici-meditate-bob">
+            <ellipse cx="0" cy="32" rx="26" ry="6" class="pici-body-fill" opacity="0.85"/>
+            <path d="M -22 32 Q -10 36 0 33 Q 10 36 22 32" stroke="var(--line)" stroke-width="1.2" fill="none" stroke-linecap="round" opacity="0.5"/>
+            <ellipse cx="0" cy="0" rx="20" ry="27" class="pici-body-fill"/>
+            <ellipse cx="-6" cy="-8" rx="7" ry="13" fill="#FFF" opacity="0.22"/>
+            <ellipse cx="-14" cy="28" rx="5" ry="3.5" class="pici-body-fill" stroke="var(--line)" stroke-width="1"/>
+            <ellipse cx="14" cy="28" rx="5" ry="3.5" class="pici-body-fill" stroke="var(--line)" stroke-width="1"/>
+            <path d="M -11 7 Q -7 11 -3 7" stroke="var(--line)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+            <path d="M 3 7 Q 7 11 11 7" stroke="var(--line)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+            <path d="M -4 23 Q 0 26 4 23" stroke="var(--line)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+            <line x1="-6" y1="-25" x2="-9" y2="-44" stroke="var(--line)" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="6" y1="-25" x2="9" y2="-44" stroke="var(--line)" stroke-width="1.8" stroke-linecap="round"/>
+            <circle cx="-9" cy="-45" r="3.2" class="pici-tip-fill"/>
+            <circle cx="9" cy="-45" r="3.2" class="pici-tip-fill"/>
+          </g>
+        </g>
+      </svg>
+    `;
+  }
   if (stage === 'baby') {
     // Kicsi, nincs kar/láb, antenna csak két pötty a fején
     return `
@@ -998,9 +1081,9 @@ function piciSVG(stage) {
 
 // ─── Pici figura renderelés (stage-aware) ─────────────────────────────
 
-function renderPici(target) {
+function renderPici(target, forceStage = null) {
   if (!target) return;
-  const stage = getPiciStage(state.piciBornAt);
+  const stage = forceStage || getPiciStage(state.piciBornAt);
   target.innerHTML = piciSVG(stage);
 }
 
@@ -1109,6 +1192,37 @@ function mmStatus() {
 
 function todayHasMmRevealed() {
   return mmStatus() === 'revealed' && state.mmToday?.date === todayKey();
+}
+
+// auto-felfedés: ha mindkét válasz megérkezett és még nincs felfedve
+async function maybeAutoReveal() {
+  const t = state.mmToday;
+  if (!t) return;
+  if (t.revealedAt) return;
+  if (!t.myResponse || !t.partnerResponse) return;
+  // helyileg azonnal: revealedAt
+  setState({ mmToday: { ...t, revealedAt: Date.now() } });
+  // szerveren is
+  if (syncReady && !t.sessionId.startsWith('local-')) {
+    await sync.revealMitMondana(t.sessionId, null);
+  }
+  // a megfelelő képernyő frissítése
+  if (currentScreen === 'home') renderMmCard();
+  else if (currentScreen === 'mm-input' || currentScreen === 'mm-status') {
+    navigate('mm-reveal');
+  } else if (currentScreen === 'mm-reveal') {
+    renderMmReveal();
+  }
+}
+
+// erőteljes újrahidratálás server-ről — biztosítja hogy a 4 válasz megjelenjen
+async function refreshMmFromServer() {
+  if (!state.pairId) return;
+  if (!syncReady) return;
+  const data = await sync.loadTodayMitMondana(state.pairId, todayKey());
+  if (data) {
+    setState({ mmToday: hydrateMmSession(data.session, data.responses) });
+  }
 }
 
 // ─── Csapat-funkciók (v0.8 — modal, típus szerint, nem napi rotáció) ──
@@ -1254,7 +1368,12 @@ const screenBindings = {
     renderQuestionCard();
     renderMmCard();
     renderPresence();
-    renderEveningBubble();
+    renderCsillamBubble();
+    maybeShowEveningMeditationSuggestion();
+    schedulePendingBubbles();
+    // mood popover zárva induljon
+    const popover = app.querySelector('[data-mood-popover]');
+    if (popover) popover.hidden = true;
   },
 
   ['whisper-compose']() {
@@ -1288,6 +1407,8 @@ const screenBindings = {
   settings() {
     const renameInput = app.querySelector('[data-rename-input]');
     if (renameInput && state.piciName) renameInput.value = state.piciName;
+    const partnerInput = app.querySelector('[data-partner-name-input]');
+    if (partnerInput && state.partnerName) partnerInput.value = state.partnerName;
     const ageEl = app.querySelector('[data-pici-age]');
     if (ageEl) {
       const stage = getPiciStage(state.piciBornAt);
@@ -1328,28 +1449,41 @@ const screenBindings = {
   },
 
   ['mm-reveal']() {
+    // először refresh server-ről, hogy mind a 4 válasz biztosan meglegyen
+    refreshMmFromServer().then(() => renderMmReveal());
     renderMmReveal();
   },
 
-  ['hala-compose']() {
+  ['hala-write']() {
+    const promptEl = app.querySelector('[data-hala-prompt]');
+    if (promptEl) promptEl.textContent = state.todayTask?.text || 'Egy konkrét dolog amit a párodnál értékelsz.';
     setTimeout(() => app.querySelector('[data-hala-input]')?.focus(), 200);
   },
 
-  ['hala-view']() {
-    const s = getCsapatState('hala');
-    const textEl = app.querySelector('[data-hala-text]');
-    if (textEl) textEl.textContent = s.text || '';
+  ['oles-run']() {
+    const promptEl = app.querySelector('[data-oles-prompt]');
+    if (promptEl) promptEl.textContent = state.todayTask?.text || 'Egy hosszú, csendes ölelés.';
+    const startBtn = app.querySelector('[data-oles-start]');
+    const doneBtn = app.querySelector('[data-oles-done]');
+    const timerEl = app.querySelector('[data-oles-timer]');
+    if (timerEl) timerEl.textContent = '20';
+    if (startBtn) startBtn.hidden = false;
+    if (doneBtn) doneBtn.hidden = true;
   },
 
-  csapat() {
-    // a csapat-modal nem igényel külön init-et
-  },
-
-  ['csapat-detail']() {
-    const type = state.csapatActiveType;
-    if (!type) { back(); return; }
-    renderCsapatDetail(type);
-    if (type === 'hala') setTimeout(() => app.querySelector('[data-hala-input]')?.focus(), 200);
+  ['meditation-suggest']() {
+    const id = state.meditSuggestId || (meditations[0] && meditations[0].id);
+    if (!id) { back(); return; }
+    const med = meditations.find(m => m.id === id);
+    if (!med) { back(); return; }
+    const titleEl = app.querySelector('[data-medit-suggest-title]');
+    const sourceEl = app.querySelector('[data-medit-suggest-source]');
+    const introEl = app.querySelector('[data-medit-suggest-intro]');
+    const figureEl = app.querySelector('[data-medit-suggest-figure]');
+    if (titleEl) titleEl.textContent = med.title;
+    if (sourceEl) sourceEl.textContent = `// közös · ${med.duration} perc · ${med.source}`;
+    if (introEl) introEl.textContent = med.intro;
+    if (figureEl) renderPici(figureEl, 'meditate');
   },
 
   ['meditation-picker']() {
@@ -1367,9 +1501,15 @@ const screenBindings = {
   },
 
   ['meditation-run']() {
+    const figureEl = app.querySelector('[data-medit-run-figure]');
+    if (figureEl) renderPici(figureEl, 'meditate');
     if (state.activeMedit) {
-      // ha van aktív, intro állapot
-      renderMeditationIntro();
+      // automatikusan startoljuk (a suggest-ből jön a "Kipróbáltuk" után)
+      if (!state.activeMedit.startedAt) {
+        startMeditation(state.activeMedit.id);
+      } else {
+        renderMeditationRunning();
+      }
     }
   },
 
@@ -1448,9 +1588,24 @@ function renderTask() {
   const card = app.querySelector('.card-task');
   const textEl = app.querySelector('[data-task-text]');
   const metaEl = app.querySelector('[data-task-meta]');
+  const btnEl = app.querySelector('.task-done-btn');
   if (textEl) textEl.textContent = state.todayTask.text;
   if (metaEl) metaEl.textContent = metaForTask(state.todayTask);
   if (card) card.classList.toggle('is-done', !!state.todayTaskDoneAt);
+  // v0.9: gomb-szöveg és akció a típus alapján
+  if (btnEl) {
+    const type = state.todayTask.type || 'simple';
+    if (type === 'hala') {
+      btnEl.textContent = 'írok →';
+      btnEl.dataset.action = 'open-hala-write';
+    } else if (type === 'oles') {
+      btnEl.textContent = 'indítom →';
+      btnEl.dataset.action = 'open-oles-run';
+    } else {
+      btnEl.textContent = 'megcsináltam';
+      btnEl.dataset.action = 'task-done';
+    }
+  }
 }
 
 function renderQuestionCard() {
@@ -1577,166 +1732,135 @@ function renderEveningBubble() {
   bubble.hidden = !isEveningMeditationHour();
 }
 
-// ─── v0.8 render: csapat-detail (a kiválasztott típus a modalban) ─────
+// ─── v0.9: Csillám-buborék rendszer ────────────────────────────────────
 
-function renderCsapatDetail(type) {
-  const titleEl = app.querySelector('[data-csapat-detail-title]');
-  const bodyEl = app.querySelector('[data-csapat-detail-body]');
-  if (!titleEl || !bodyEl) return;
-  titleEl.textContent = CSAPAT_LABELS[type] || '';
-  if (type === 'hala') renderCsapatDetailHala(bodyEl);
-  else if (type === 'hangulat') renderCsapatDetailHangulat(bodyEl);
-  else if (type === 'oles') renderCsapatDetailOles(bodyEl);
-  else if (type === 'gondolok') renderCsapatDetailGondolok(bodyEl);
-  else if (type === 'hid') renderCsapatDetailHid(bodyEl);
+// renderelés: csak akkor jelenik meg, ha van aktív bubble és nem expirált
+function renderCsillamBubble() {
+  const bubble = app.querySelector('[data-csillam-bubble]');
+  const content = app.querySelector('[data-csillam-bubble-content]');
+  if (!bubble || !content) return;
+  const b = state.activeBubble;
+  if (!b) {
+    bubble.hidden = true;
+    return;
+  }
+  // ellenőrzés: érvényes-e még?
+  const now = Date.now();
+  if (b.expiresAt && now > b.expiresAt) {
+    setState({ activeBubble: null });
+    bubble.hidden = true;
+    return;
+  }
+  if (now < b.deliveryAt) {
+    bubble.hidden = true;
+    return;
+  }
+  bubble.hidden = false;
+  content.classList.remove('is-emoji', 'is-suggest');
+  if (b.type === 'hangulat' || b.type === 'gondolok') {
+    content.classList.add('is-emoji');
+    content.textContent = b.payload?.emoji || (b.type === 'gondolok' ? '❤' : '😊');
+    bubble.dataset.bubbleAction = '';
+  } else if (b.type === 'hala') {
+    content.textContent = `„${b.payload?.text || ''}"`;
+    bubble.dataset.bubbleAction = '';
+  } else if (b.type === 'meditation-suggest') {
+    content.classList.add('is-suggest');
+    const med = meditations.find(m => m.id === b.payload?.meditationId);
+    content.textContent = med ? `ma a ${med.title.toLowerCase()}-et javaslom` : 'elcsendesedünk?';
+    bubble.dataset.bubbleAction = 'open-meditation-suggest';
+  }
 }
 
-function renderCsapatDetailHala(body) {
-  const s = getCsapatState('hala');
-  if (s.acked_at && s.author_id) {
-    body.innerHTML = `<p class="modal-hint">megtörtént ❤ · új lehet bármikor</p>
-      <button class="btn-primary" data-action="reset-csapat" data-csapat-type="hala">Új üzenet írok</button>`;
-    return;
-  }
-  if (s.author_id && isMyId(s.author_id)) {
-    body.innerHTML = `<p class="modal-hint">elküldted, várjuk hogy elolvassa:</p>
-      <div class="hala-text">„${escapeHtml(s.text || '')}"</div>`;
-    return;
-  }
-  if (s.author_id && !isMyId(s.author_id)) {
-    body.innerHTML = `<p class="modal-hint">a párod köszönete neked:</p>
-      <div class="hala-text">${escapeHtml(s.text || '')}</div>
-      <button class="btn-primary" data-action="ack-hala">Olvasod ❤</button>`;
-    return;
-  }
-  body.innerHTML = `<p class="modal-hint">egy konkrét dolog, amit ma a párodnál értékelsz</p>
-    <textarea class="note-input" data-hala-input maxlength="280" placeholder="..."></textarea>
-    <button class="btn-primary" data-action="send-hala">Elküldöm</button>`;
+function setBubble(message) {
+  // beállít egy aktív buborékot, frissíti a UI-t
+  setState({ activeBubble: message });
+  if (currentScreen === 'home') renderCsillamBubble();
 }
 
-function renderCsapatDetailHangulat(body) {
-  const s = getCsapatState('hangulat');
-  let mine = null, theirs = null;
-  if (s.a_id && isMyId(s.a_id)) { mine = s.a_emoji; theirs = s.b_emoji || null; }
-  else if (s.b_id && isMyId(s.b_id)) { mine = s.b_emoji; theirs = s.a_emoji || null; }
-  else if (s.a_id) { theirs = s.a_emoji; }
-  else if (s.b_id) { theirs = s.b_emoji; }
-
-  if (mine && theirs) {
-    const myMood = MOODS.find(m => m.emoji === mine);
-    const theirMood = MOODS.find(m => m.emoji === theirs);
-    body.innerHTML = `
-      <p class="modal-hint">megosztottátok ❤</p>
-      <div class="mood-display">
-        <div class="mood-display-item">
-          <div class="mood-display-emoji">${mine}</div>
-          <div class="mood-display-label">Te · ${myMood?.label || ''}</div>
-        </div>
-        <div class="mood-display-item">
-          <div class="mood-display-emoji">${theirs}</div>
-          <div class="mood-display-label">Ő · ${theirMood?.label || ''}</div>
-        </div>
-      </div>
-      <button class="btn-ghost" data-action="reset-csapat" data-csapat-type="hangulat">Új hangulat</button>
-    `;
-    return;
-  }
-  body.innerHTML = `
-    <p class="modal-hint">hogy érzed magad most?</p>
-    <div class="mood-row">
-      ${MOODS.map(m => `<button class="mood-btn ${mine === m.emoji ? 'is-picked' : ''}" data-action="pick-mood" data-emoji="${m.emoji}" title="${m.label}">${m.emoji}</button>`).join('')}
-    </div>
-    ${mine ? `<p class="modal-hint">elküldted: ${mine} · várjuk a párodat</p>` : ''}
-    ${theirs ? `<p class="modal-hint">ő már: ${theirs}</p>` : ''}
-  `;
+// időzített kézbesítések feldolgozása (jövőbeli üzenetek)
+let bubbleSchedulerTimeout = null;
+function schedulePendingBubbles() {
+  if (bubbleSchedulerTimeout) { clearTimeout(bubbleSchedulerTimeout); bubbleSchedulerTimeout = null; }
+  const now = Date.now();
+  const pending = state.pendingBubbleMessages || [];
+  // a soron következő esedékes
+  const next = pending.find(m => m.deliveryAt > now);
+  if (!next) return;
+  const delay = Math.max(0, next.deliveryAt - now);
+  bubbleSchedulerTimeout = setTimeout(() => {
+    // promotal: aktív lesz, levesszük a pendingről
+    setState({
+      activeBubble: next,
+      pendingBubbleMessages: pending.filter(m => m.id !== next.id),
+    });
+    if (currentScreen === 'home') renderCsillamBubble();
+    schedulePendingBubbles();
+  }, delay);
 }
 
-function renderCsapatDetailOles(body) {
-  const s = getCsapatState('oles');
-  if (s.completed_at) {
-    body.innerHTML = `<p class="modal-hint">megcsináltátok ❤ · újat indíthattok bármikor</p>
-      <button class="btn-primary" data-action="reset-csapat" data-csapat-type="oles">Újra</button>`;
-    return;
+// esti meditáció-javaslat (21h)
+function maybeShowEveningMeditationSuggestion() {
+  const now = new Date();
+  const h = now.getHours();
+  // 21 és 22 között
+  if (h < 21 || h >= 22) return;
+  // ha már van aktív buborék a meditációhoz, skip
+  if (state.activeBubble?.type === 'meditation-suggest') return;
+  // ha a mai napra már elindítottunk meditációt, skip
+  const todayMedit = state.feladatLog?.find(e => e.taskId?.toString().startsWith('medit-') && (now.getTime() - e.doneAt) < 86400000);
+  if (todayMedit) return;
+  // sorsoljunk egy meditációt mára (deterministic, dátum alapján)
+  if (!state.meditSuggestId) {
+    const seed = todayKey().split('-').reduce((a, b) => a + parseInt(b, 10), 0);
+    const med = meditations[seed % meditations.length];
+    setState({ meditSuggestId: med.id });
   }
-  if (s.started_at) {
-    const elapsed = Math.floor((Date.now() - new Date(s.started_at).getTime()) / 1000);
+  setBubble({
+    id: 'medit-suggest-' + todayKey(),
+    type: 'meditation-suggest',
+    payload: { meditationId: state.meditSuggestId },
+    deliveryAt: Date.now(),
+    expiresAt: null,
+  });
+}
+
+// ─── v0.9: Mood popover ────────────────────────────────────────────────
+
+function toggleMoodPicker(open) {
+  const popover = app.querySelector('[data-mood-popover]');
+  if (!popover) return;
+  const willOpen = open !== undefined ? open : popover.hidden;
+  popover.hidden = !willOpen;
+  setState({ moodPickerOpen: willOpen });
+}
+
+// ─── v0.9: Ölelés (helyi 20 mp countdown) ─────────────────────────────
+
+let olesInterval = null;
+function startOlesTimer() {
+  setState({ olesStartedAt: Date.now() });
+  // gomb átváltások
+  const startBtn = app.querySelector('[data-oles-start]');
+  if (startBtn) startBtn.hidden = true;
+  if (olesInterval) clearInterval(olesInterval);
+  olesInterval = setInterval(() => {
+    if (currentScreen !== 'oles-run') { stopOlesTimer(); return; }
+    const elapsed = Math.floor((Date.now() - state.olesStartedAt) / 1000);
     const remaining = Math.max(0, 20 - elapsed);
-    body.innerHTML = `
-      <p class="hug-prompt">öleljétek meg egymást csendben</p>
-      <div class="hug-timer" data-hug-timer>${remaining}</div>
-      ${remaining === 0
-        ? `<button class="btn-primary" data-action="complete-hug">megcsináltuk ❤</button>`
-        : `<p class="modal-hint" style="text-align:center;">másodperc</p>`
-      }
-    `;
-    if (remaining > 0) startHugTimerTick();
-    return;
-  }
-  body.innerHTML = `<p class="modal-hint">egy hosszú, csendes ölelés most</p>
-    <button class="btn-primary" data-action="start-hug">indítom →</button>`;
-}
-
-function renderCsapatDetailGondolok(body) {
-  const s = getCsapatState('gondolok');
-  const pings = s.pings || [];
-  const myCount = pings.filter(p => isMyId(p.from)).length;
-  const theirCount = pings.filter(p => !isMyId(p.from)).length;
-  body.innerHTML = `
-    <p class="modal-hint">egy szív-jelzés a párodnak — bármikor</p>
-    <div class="gondolok-counts">
-      <span><span class="gondolok-count-num">${myCount}</span> küldtem</span>
-      <span><span class="gondolok-count-num">${theirCount}</span> kaptam</span>
-    </div>
-    <button class="heart-btn" data-action="send-gondolok">❤ rád gondolok</button>
-  `;
-}
-
-function renderCsapatDetailHid(body) {
-  const s = getCsapatState('hid');
-  if (s.responder_id) {
-    const meReq = isMyId(s.requester_id);
-    body.innerHTML = `<p class="modal-hint">összekötve ❤ · most beszéljetek élőben</p>
-      <p class="modal-hint">${meReq ? 'ő válaszolt: hallgat' : 'te válaszoltál: hallgatod'}</p>
-      <button class="btn-ghost" data-action="reset-csapat" data-csapat-type="hid">Új jelzés</button>`;
-    return;
-  }
-  if (s.requester_id) {
-    if (isMyId(s.requester_id)) {
-      body.innerHTML = `<p class="modal-hint">elküldted — várjuk hogy készen álljon</p>`;
-    } else {
-      body.innerHTML = `<p class="modal-hint">${state.piciName || 'a párod'}: szeretne valamiről beszélni</p>
-        <button class="btn-primary" data-action="accept-hid">hallgatlak ❤</button>`;
-    }
-    return;
-  }
-  body.innerHTML = `<p class="modal-hint">„valamit szeretnék veled megbeszélni, de nehéz elindulnom"</p>
-    <button class="btn-primary" data-action="send-hid">beszélnünk kéne →</button>`;
-}
-
-// ─── Ölelés countdown — interval ──────────────────────────────────────
-
-let hugInterval = null;
-function startHugTimerTick() {
-  if (hugInterval) return;
-  hugInterval = setInterval(() => {
-    if (currentScreen !== 'csapat-detail') { stopHugTimerTick(); return; }
-    if (state.csapatActiveType !== 'oles') { stopHugTimerTick(); return; }
-    const s = getCsapatState('oles');
-    if (!s.started_at || s.completed_at) { stopHugTimerTick(); return; }
-    const elapsed = Math.floor((Date.now() - new Date(s.started_at).getTime()) / 1000);
-    const remaining = Math.max(0, 20 - elapsed);
-    const timerEl = app.querySelector('[data-hug-timer]');
-    if (timerEl) {
-      timerEl.textContent = remaining;
-      if (remaining === 0) {
-        renderCsapatDetail('oles');
-        stopHugTimerTick();
-      }
+    const timerEl = app.querySelector('[data-oles-timer]');
+    if (timerEl) timerEl.textContent = remaining;
+    if (remaining === 0) {
+      stopOlesTimer();
+      const doneBtn = app.querySelector('[data-oles-done]');
+      if (doneBtn) doneBtn.hidden = false;
+      // bell hang
+      try { playBell(); } catch(e) {}
     }
   }, 250);
 }
-function stopHugTimerTick() {
-  if (hugInterval) { clearInterval(hugInterval); hugInterval = null; }
+function stopOlesTimer() {
+  if (olesInterval) { clearInterval(olesInterval); olesInterval = null; }
 }
 
 // ─── Meditáció — bell + futtatás ──────────────────────────────────────
@@ -1895,7 +2019,7 @@ function renderMmStatus() {
 
   if (t.partnerResponse) {
     partnerDot?.classList.add('is-done');
-    if (partnerStatus) partnerStatus.textContent = `${state.piciName || 'a párod'}: válaszolt ✓`;
+    if (partnerStatus) partnerStatus.textContent = `${state.partnerName || 'a párod'}: válaszolt ✓`;
     if (revealBtn) revealBtn.disabled = false;
   } else {
     partnerDot?.classList.remove('is-done');
@@ -2221,6 +2345,15 @@ document.addEventListener('click', async e => {
       break;
     }
 
+    case 'open-hala-write': {
+      navigate('hala-write');
+      break;
+    }
+    case 'open-oles-run': {
+      navigate('oles-run');
+      break;
+    }
+
     case 'task-done': {
       if (state.todayTaskDoneAt) return;
       const now = Date.now();
@@ -2368,6 +2501,19 @@ document.addEventListener('click', async e => {
       break;
     }
 
+    case 'save-partner-name': {
+      const input = app.querySelector('[data-partner-name-input]');
+      const name = input?.value.trim();
+      if (!name) {
+        toast('adj nevet');
+        input?.focus();
+        return;
+      }
+      setState({ partnerName: name });
+      toast(`${name} ❤`);
+      break;
+    }
+
     case 'reset-all': {
       if (!confirm('Biztos? Ezzel törlöd a helyi állapotot és újra kell párosítanotok. (A Supabase adatok érintetlenek maradnak.)')) {
         return;
@@ -2395,34 +2541,72 @@ document.addEventListener('click', async e => {
       break;
     }
 
-    // ─── Csapat-modal megnyitás ────────────────────────────────────
-    case 'open-csapat': {
-      navigate('csapat');
-      break;
-    }
-    case 'csapat-pick': {
-      const type = actionEl.dataset.csapatType;
-      if (!type) return;
-      setState({ csapatActiveType: type });
-      navigate('csapat-detail');
-      break;
-    }
-    case 'reset-csapat': {
-      const type = actionEl.dataset.csapatType;
-      if (!type) return;
-      // helyi reset (új state ezen a típuson)
-      const newCsapatToday = { ...state.csapatToday };
-      delete newCsapatToday[type];
-      setState({ csapatToday: newCsapatToday });
-      // szerveren is — egy üres state-tel
-      if (syncReady && state.pairId) {
-        await sync.upsertActivity(state.pairId, type, todayKey(), null, () => ({}));
+
+    // ═══════════════════════════════════════════════════════════════
+    // v0.9 — Csillám-buborék rendszer
+    // ═══════════════════════════════════════════════════════════════
+
+    // ❤ — instant "rád gondolok" buborék mindkét félnek
+    case 'send-gondolok': {
+      const heartBtn = app.querySelector('.csillam-action[data-action="send-gondolok"]');
+      if (heartBtn) {
+        heartBtn.classList.add('is-pulsing');
+        setTimeout(() => heartBtn.classList.remove('is-pulsing'), 600);
       }
-      renderCsapatDetail(type);
+      // helyileg azonnal megjelenik a buborékban
+      const localMsg = {
+        id: 'local-gondolok-' + Date.now(),
+        type: 'gondolok',
+        payload: { emoji: '❤' },
+        deliveryAt: Date.now(),
+        expiresAt: Date.now() + 3 * 60 * 60 * 1000, // 3h
+      };
+      setBubble(localMsg);
+      // szerveren is — mindkét fél buborékjába kerül
+      if (syncReady && state.pairId) {
+        await sync.createCsillamMessage(
+          state.pairId, state.myMemberId, 'gondolok',
+          { emoji: '❤' },
+          new Date(),
+          new Date(Date.now() + 3 * 60 * 60 * 1000)
+        );
+      }
+      toast('elküldve ❤');
       break;
     }
 
-    // ─── Hála-üzenet ────────────────────────────────────────────────
+    // 😊 → mood popover megnyitás/zárás
+    case 'open-mood-picker': {
+      toggleMoodPicker();
+      break;
+    }
+
+    // mood emoji választás → instant buborék
+    case 'pick-mood': {
+      const emoji = actionEl.dataset.emoji;
+      if (!emoji) return;
+      toggleMoodPicker(false);
+      const localMsg = {
+        id: 'local-hangulat-' + Date.now(),
+        type: 'hangulat',
+        payload: { emoji },
+        deliveryAt: Date.now(),
+        expiresAt: Date.now() + 12 * 60 * 60 * 1000, // 12h (este→reggel)
+      };
+      setBubble(localMsg);
+      if (syncReady && state.pairId) {
+        await sync.createCsillamMessage(
+          state.pairId, state.myMemberId, 'hangulat',
+          { emoji },
+          new Date(),
+          new Date(Date.now() + 12 * 60 * 60 * 1000)
+        );
+      }
+      toast(`hangulat ${emoji}`);
+      break;
+    }
+
+    // ─── Hála-üzenet (a feladat-kártyán keresztül, késleltetett kézbesítés) ──
     case 'send-hala': {
       const input = app.querySelector('[data-hala-input]');
       const text = input?.value.trim();
@@ -2431,167 +2615,110 @@ document.addEventListener('click', async e => {
         input?.focus();
         return;
       }
-      const newState = { author_id: state.myMemberId, text, sent_at: new Date().toISOString() };
-      setState({
-        csapatToday: {
-          ...state.csapatToday,
-          hala: { activity_type: 'hala', date: todayKey(), state: newState },
-        },
-      });
-      if (syncReady && state.pairId) {
-        await sync.upsertActivity(state.pairId, 'hala', todayKey(), null, () => newState);
+      // random kézbesítési idő: 8-22h közötti, minimum 1 óra múlva, max 12 óra múlva
+      const now = new Date();
+      let deliveryAt = new Date(now);
+      // legalább 1 óra múlva, legfeljebb 12 óra múlva
+      const minOffsetMs = 1 * 60 * 60 * 1000;
+      const maxOffsetMs = 12 * 60 * 60 * 1000;
+      const randomOffsetMs = minOffsetMs + Math.random() * (maxOffsetMs - minOffsetMs);
+      deliveryAt = new Date(now.getTime() + randomOffsetMs);
+      // ha az eredmény nincs 8-22h ablakban, csúsztassuk be
+      const dh = deliveryAt.getHours();
+      if (dh < 8) {
+        // másnap reggel 8-ig + random a 14h ablakban
+        deliveryAt.setHours(8 + Math.floor(Math.random() * 14));
+        deliveryAt.setMinutes(Math.floor(Math.random() * 60));
+      } else if (dh >= 22) {
+        // következő nap 8-22 ablak random
+        deliveryAt.setDate(deliveryAt.getDate() + 1);
+        deliveryAt.setHours(8 + Math.floor(Math.random() * 14));
+        deliveryAt.setMinutes(Math.floor(Math.random() * 60));
       }
-      toast('elküldted ❤');
-      renderCsapatDetail('hala');
+      const expiresAt = new Date(deliveryAt.getTime() + 24 * 60 * 60 * 1000);
+      if (syncReady && state.pairId) {
+        await sync.createCsillamMessage(
+          state.pairId, state.myMemberId, 'hala',
+          { text },
+          deliveryAt,
+          expiresAt
+        );
+      }
+      // a feladatot teljesítettnek jelöljük helyileg + a feladat_log-ban
+      const t = state.todayTask;
+      if (t) {
+        const log = [
+          { taskId: t.id, text: t.text, doneAt: Date.now(), by: 'self', note: text },
+          ...state.feladatLog.filter(e => !(e.taskId === t.id && e.doneAt > Date.now() - 60000)),
+        ];
+        setState({ todayTaskDoneAt: Date.now(), feladatLog: log });
+        if (syncReady && state.pairId) {
+          await sync.logTaskDone(state.pairId, state.myMemberId, t, text);
+        }
+      }
+      toast('Csillámra bíztad ❤');
+      navigate('home');
       break;
     }
 
-    case 'ack-hala': {
-      const s = getCsapatState('hala');
-      const newState = { ...s, acked_at: new Date().toISOString() };
-      setState({
-        csapatToday: {
-          ...state.csapatToday,
-          hala: { ...(state.csapatToday.hala || {}), state: newState },
-        },
-      });
-      if (syncReady && state.pairId) {
-        await sync.upsertActivity(state.pairId, 'hala', todayKey(), null, prev => ({ ...prev, acked_at: new Date().toISOString() }));
-      }
-      toast('elolvastad ❤');
-      renderCsapatDetail('hala');
+    // ─── 20 mp ölelés (helyi countdown) ─────────────────────────────
+    case 'oles-start': {
+      startOlesTimer();
       break;
     }
-
-    // ─── Hangulat-megosztás ─────────────────────────────────────────
-    case 'pick-mood': {
-      const emoji = actionEl.dataset.emoji;
-      if (!emoji) return;
-      const s = getCsapatState('hangulat');
-      let newState;
-      if (!s.a_id) {
-        newState = { ...s, a_id: state.myMemberId, a_emoji: emoji, a_at: new Date().toISOString() };
-      } else if (!s.b_id && s.a_id !== state.myMemberId) {
-        newState = { ...s, b_id: state.myMemberId, b_emoji: emoji, b_at: new Date().toISOString() };
-      } else if (s.a_id === state.myMemberId) {
-        newState = { ...s, a_emoji: emoji, a_at: new Date().toISOString() };
-      } else {
-        newState = { ...s, b_emoji: emoji, b_at: new Date().toISOString() };
-      }
-      setState({
-        csapatToday: {
-          ...state.csapatToday,
-          hangulat: { activity_type: 'hangulat', date: todayKey(), state: newState },
-        },
-      });
-      if (syncReady && state.pairId) {
-        await sync.upsertActivity(state.pairId, 'hangulat', todayKey(), null, prev => {
-          if (!prev.a_id) return { ...prev, a_id: state.myMemberId, a_emoji: emoji, a_at: new Date().toISOString() };
-          if (!prev.b_id && prev.a_id !== state.myMemberId) return { ...prev, b_id: state.myMemberId, b_emoji: emoji, b_at: new Date().toISOString() };
-          if (prev.a_id === state.myMemberId) return { ...prev, a_emoji: emoji, a_at: new Date().toISOString() };
-          return { ...prev, b_emoji: emoji, b_at: new Date().toISOString() };
-        });
-      }
-      renderCsapatDetail('hangulat');
-      break;
-    }
-
-    // ─── 20 másodperces ölelés ─────────────────────────────────────
-    case 'start-hug': {
-      const newState = { started_at: new Date().toISOString(), started_by: state.myMemberId };
-      setState({
-        csapatToday: {
-          ...state.csapatToday,
-          oles: { activity_type: 'oles', date: todayKey(), state: newState },
-        },
-      });
-      if (syncReady && state.pairId) {
-        await sync.upsertActivity(state.pairId, 'oles', todayKey(), null, () => newState);
-      }
-      renderCsapatDetail('oles');
-      break;
-    }
-
-    case 'complete-hug': {
-      const s = getCsapatState('oles');
-      const newState = { ...s, completed_at: new Date().toISOString(), completed_by: state.myMemberId };
-      setState({
-        csapatToday: {
-          ...state.csapatToday,
-          oles: { ...(state.csapatToday.oles || {}), state: newState },
-        },
-      });
-      if (syncReady && state.pairId) {
-        await sync.upsertActivity(state.pairId, 'oles', todayKey(), null, prev => ({
-          ...prev, completed_at: new Date().toISOString(), completed_by: state.myMemberId,
-        }));
+    case 'oles-done': {
+      stopOlesTimer();
+      const t = state.todayTask;
+      if (t) {
+        const log = [
+          { taskId: t.id, text: t.text, doneAt: Date.now(), by: 'self' },
+          ...state.feladatLog,
+        ];
+        setState({ todayTaskDoneAt: Date.now(), feladatLog: log, olesStartedAt: null });
+        if (syncReady && state.pairId) {
+          await sync.logTaskDone(state.pairId, state.myMemberId, t);
+        }
       }
       toast('szép ❤');
-      stopHugTimerTick();
-      renderCsapatDetail('oles');
+      navigate('home');
       break;
     }
 
-    // ─── Rád gondolok ───────────────────────────────────────────────
-    case 'send-gondolok': {
-      const ping = { from: state.myMemberId, at: new Date().toISOString() };
-      const s = getCsapatState('gondolok');
-      const newState = { pings: [...(s.pings || []), ping] };
-      setState({
-        csapatToday: {
-          ...state.csapatToday,
-          gondolok: { activity_type: 'gondolok', date: todayKey(), state: newState },
-        },
-      });
-      const heartBtn = app.querySelector('.heart-btn');
-      if (heartBtn) {
-        heartBtn.classList.add('is-pulsing');
-        setTimeout(() => heartBtn.classList.remove('is-pulsing'), 600);
+    // ─── Meditáció-javaslat (esti buborékból) ───────────────────────
+    case 'open-meditation-suggest': {
+      navigate('meditation-suggest');
+      break;
+    }
+    case 'meditation-suggest-other': {
+      // új sorsolás
+      const cur = state.meditSuggestId;
+      const others = meditations.filter(m => m.id !== cur);
+      const newMed = others[Math.floor(Math.random() * others.length)];
+      setState({ meditSuggestId: newMed.id });
+      // re-render
+      const titleEl = app.querySelector('[data-medit-suggest-title]');
+      const sourceEl = app.querySelector('[data-medit-suggest-source]');
+      const introEl = app.querySelector('[data-medit-suggest-intro]');
+      if (titleEl) titleEl.textContent = newMed.title;
+      if (sourceEl) sourceEl.textContent = `// közös · ${newMed.duration} perc · ${newMed.source}`;
+      if (introEl) introEl.textContent = newMed.intro;
+      // buborékban is frissítsük
+      if (state.activeBubble?.type === 'meditation-suggest') {
+        setBubble({
+          ...state.activeBubble,
+          payload: { meditationId: newMed.id },
+        });
       }
-      if (syncReady && state.pairId) {
-        await sync.upsertActivity(state.pairId, 'gondolok', todayKey(), null, prev => ({
-          pings: [...(prev.pings || []), ping],
-        }));
-      }
-      renderCsapatDetail('gondolok');
       break;
     }
 
-    // ─── Híd-jelzés ─────────────────────────────────────────────────
-    case 'send-hid': {
-      const newState = { requester_id: state.myMemberId, requested_at: new Date().toISOString() };
-      setState({
-        csapatToday: {
-          ...state.csapatToday,
-          hid: { activity_type: 'hid', date: todayKey(), state: newState },
-        },
-      });
-      if (syncReady && state.pairId) {
-        await sync.upsertActivity(state.pairId, 'hid', todayKey(), null, () => newState);
-      }
-      toast('elküldted ❤');
-      renderCsapatDetail('hid');
+    // klikk a buborékra (delegálás)
+    case 'bubble-tap': {
+      const action = app.querySelector('[data-csillam-bubble]')?.dataset.bubbleAction;
+      if (action === 'open-meditation-suggest') navigate('meditation-suggest');
       break;
     }
 
-    case 'accept-hid': {
-      const s = getCsapatState('hid');
-      const newState = { ...s, responder_id: state.myMemberId, accepted_at: new Date().toISOString() };
-      setState({
-        csapatToday: {
-          ...state.csapatToday,
-          hid: { ...(state.csapatToday.hid || {}), state: newState },
-        },
-      });
-      if (syncReady && state.pairId) {
-        await sync.upsertActivity(state.pairId, 'hid', todayKey(), null, prev => ({
-          ...prev, responder_id: state.myMemberId, accepted_at: new Date().toISOString(),
-        }));
-      }
-      toast('összekötöttünk ❤');
-      renderCsapatDetail('hid');
-      break;
-    }
 
     // ─── Meditáció ──────────────────────────────────────────────────
     case 'open-meditation-picker': {
@@ -2601,7 +2728,6 @@ document.addEventListener('click', async e => {
     case 'open-meditation': {
       const id = actionEl.dataset.meditId;
       if (!id) return;
-      // bejön az intro screen-re
       const med = meditations.find(m => m.id === id);
       if (!med) return;
       const totalSec = med.phases.reduce((sum, p) => sum + p.duration_sec, 0);
@@ -2622,7 +2748,28 @@ document.addEventListener('click', async e => {
       break;
     }
     case 'start-meditation': {
-      if (state.activeMedit) startMeditation(state.activeMedit.id);
+      // a "Kipróbáltuk" gomb a meditation-suggest screen-en
+      const id = state.meditSuggestId || (state.activeMedit?.id);
+      if (!id) return;
+      const med = meditations.find(m => m.id === id);
+      if (!med) return;
+      const totalSec = med.phases.reduce((sum, p) => sum + p.duration_sec, 0);
+      setState({
+        activeMedit: {
+          id: med.id, title: med.title, source: med.source,
+          intro: med.intro, outro: med.outro,
+          phases: med.phases, totalSec,
+          startedAt: null, currentPhaseIdx: -1,
+        },
+      });
+      // a buborékot levesszük, mert most fut
+      if (state.activeBubble?.type === 'meditation-suggest') {
+        setState({ activeBubble: null });
+        if (syncReady && state.pairId && state.activeBubble?.id?.startsWith('local-') === false) {
+          // szerveren is expirálni — overwrite következő hangulattal majd
+        }
+      }
+      navigate('meditation-run');
       break;
     }
     case 'finish-meditation':
@@ -2694,10 +2841,16 @@ document.addEventListener('click', async e => {
       });
       if (syncReady && !state.mmToday.sessionId.startsWith('local-')) {
         await sync.submitMitMondanaResponse(state.mmToday.sessionId, state.myMemberId, guess, actual);
+        // server-ről frissítsük — ha közben a partner is bekuldte, megjelenik
+        await refreshMmFromServer();
       }
       toast('beküldted ✓');
-      // ha már mindketten kész → status (felfedés-gomb aktív)
-      navigate('mm-status');
+      // ha mindkettő válaszolt: auto-reveal; egyébként status
+      if (state.mmToday?.myResponse && state.mmToday?.partnerResponse) {
+        await maybeAutoReveal();
+      } else {
+        navigate('mm-status');
+      }
       break;
     }
 

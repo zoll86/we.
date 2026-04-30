@@ -203,14 +203,29 @@
 
       <!-- Hero / Csillám -->
       <div class="hero">
-        <div class="pici-figure" data-pici-figure></div>
+        <div class="csillam-wrap">
+          <div class="csillam-bubble" data-csillam-bubble data-action="bubble-tap" hidden>
+            <div class="csillam-bubble-content" data-csillam-bubble-content></div>
+            <div class="csillam-bubble-tail"></div>
+          </div>
+          <div class="pici-figure" data-pici-figure></div>
+        </div>
         <h2 class="pici-name" data-pici-name></h2>
         <div class="hero-status" data-hero-status>
           <div class="status-dots" data-status-dots><span data-dot-self></span><span data-dot-partner></span></div>
           <span class="hero-status-text" data-status-text>ma mindketten itt</span>
         </div>
-        <button class="csapat-btn" data-action="open-csapat">+ csapat-funkciók</button>
-        <button class="medit-bubble" data-action="open-meditation-picker" data-medit-bubble hidden>elcsendesedünk?</button>
+        <div class="csillam-actions">
+          <button class="csillam-action" data-action="send-gondolok" aria-label="rád gondolok">❤</button>
+          <button class="csillam-action" data-action="open-mood-picker" aria-label="hangulatom">😊</button>
+        </div>
+        <div class="mood-popover" data-mood-popover hidden>
+          <button class="mood-btn" data-action="pick-mood" data-emoji="😊" title="jól">😊</button>
+          <button class="mood-btn" data-action="pick-mood" data-emoji="😐" title="közepes">😐</button>
+          <button class="mood-btn" data-action="pick-mood" data-emoji="😔" title="nehéz">😔</button>
+          <button class="mood-btn" data-action="pick-mood" data-emoji="😴" title="fáradt">😴</button>
+          <button class="mood-btn" data-action="pick-mood" data-emoji="🌟" title="csillogós">🌟</button>
+        </div>
       </div>
 
       <!-- Mit mondana a másik (napi rituálé) -->
@@ -438,8 +453,8 @@
   </section>
 </template>
 
-<!-- 14. HÁLA-üzenet · írás -->
-<template id="screen-hala-compose">
+<!-- 14. HÁLA-ÜZENET · írás (a feladat-kártyán keresztül) -->
+<template id="screen-hala-write">
   <section class="screen screen-modal">
     <header class="modal-header">
       <button class="back-btn" data-action="back" aria-label="vissza">
@@ -449,96 +464,37 @@
       <span></span>
     </header>
     <div class="modal-body">
-      <p class="modal-hint">egy konkrét dolog, amit ma a párodnál értékelsz</p>
-      <textarea class="note-input" data-hala-input maxlength="280" placeholder="..."></textarea>
-      <button class="btn-primary" data-action="send-hala">Elküldöm</button>
+      <p class="modal-hint" data-hala-prompt></p>
+      <textarea class="note-input" data-hala-input maxlength="240" placeholder="..."></textarea>
+      <p class="modal-hint" style="margin-top:8px; opacity:0.7;">Csillám őrzi és valamikor 8–22 óra között átadja — egy nem várt pillanatban.</p>
+      <button class="btn-primary" data-action="send-hala">Csillámra bízom ❤</button>
     </div>
   </section>
 </template>
 
-<!-- 15. HÁLA-üzenet · olvasás -->
-<template id="screen-hala-view">
+<!-- 15. ÖLELÉS · 20 mp countdown -->
+<template id="screen-oles-run">
   <section class="screen screen-modal">
     <header class="modal-header">
       <button class="back-btn" data-action="back" aria-label="vissza">
         <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
-      <h3 class="modal-title">hála-üzenet</h3>
+      <h3 class="modal-title">20 mp ölelés</h3>
       <span></span>
     </header>
     <div class="modal-body">
-      <p class="modal-hint">a párod köszönete neked:</p>
-      <div class="hala-text" data-hala-text></div>
-      <button class="btn-primary" data-action="ack-hala">Olvasod ❤</button>
+      <p class="hug-prompt" data-oles-prompt></p>
+      <div class="hug-timer-wrap">
+        <div class="hug-timer" data-oles-timer>20</div>
+        <div class="hug-timer-sub">másodperc</div>
+      </div>
+      <button class="btn-primary" data-action="oles-start" data-oles-start hidden>indítom →</button>
+      <button class="btn-primary" data-action="oles-done" data-oles-done hidden>megcsináltuk ❤</button>
     </div>
   </section>
 </template>
 
-<!-- 16. CSAPAT-funkciók modal -->
-<template id="screen-csapat">
-  <section class="screen screen-modal">
-    <header class="modal-header">
-      <button class="back-btn" data-action="back" aria-label="vissza">
-        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-      <h3 class="modal-title">csapat-funkciók</h3>
-      <span></span>
-    </header>
-    <div class="modal-body" data-csapat-body>
-      <p class="modal-hint">amit most jólesik — bármikor</p>
-      <button class="csapat-tile" data-action="csapat-pick" data-csapat-type="hala">
-        <span class="csapat-tile-emoji">🌸</span>
-        <span class="csapat-tile-text">
-          <span class="csapat-tile-title">Hála-üzenet</span>
-          <span class="csapat-tile-desc">egy konkrét köszönet</span>
-        </span>
-      </button>
-      <button class="csapat-tile" data-action="csapat-pick" data-csapat-type="hangulat">
-        <span class="csapat-tile-emoji">😊</span>
-        <span class="csapat-tile-text">
-          <span class="csapat-tile-title">Hangulat-megosztás</span>
-          <span class="csapat-tile-desc">egy emoji egymásnak</span>
-        </span>
-      </button>
-      <button class="csapat-tile" data-action="csapat-pick" data-csapat-type="oles">
-        <span class="csapat-tile-emoji">🤗</span>
-        <span class="csapat-tile-text">
-          <span class="csapat-tile-title">20 másodperces ölelés</span>
-          <span class="csapat-tile-desc">együtt csendben</span>
-        </span>
-      </button>
-      <button class="csapat-tile" data-action="csapat-pick" data-csapat-type="gondolok">
-        <span class="csapat-tile-emoji">❤</span>
-        <span class="csapat-tile-text">
-          <span class="csapat-tile-title">Rád gondolok</span>
-          <span class="csapat-tile-desc">egy szív-jelzés</span>
-        </span>
-      </button>
-      <button class="csapat-tile" data-action="csapat-pick" data-csapat-type="hid">
-        <span class="csapat-tile-emoji">🌉</span>
-        <span class="csapat-tile-text">
-          <span class="csapat-tile-title">Híd-jelzés</span>
-          <span class="csapat-tile-desc">„beszélnünk kéne"</span>
-        </span>
-      </button>
-    </div>
-  </section>
-</template>
-
-<!-- 17. CSAPAT-funkció · részlet (a kiválasztott típus inline) -->
-<template id="screen-csapat-detail">
-  <section class="screen screen-modal">
-    <header class="modal-header">
-      <button class="back-btn" data-action="back" aria-label="vissza">
-        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-      <h3 class="modal-title" data-csapat-detail-title></h3>
-      <span></span>
-    </header>
-    <div class="modal-body" data-csapat-detail-body></div>
-  </section>
-</template>
-
+<!-- 18. MEDITÁCIÓ · választó -->
 <!-- 18. MEDITÁCIÓ · választó -->
 <template id="screen-meditation-picker">
   <section class="screen screen-modal">
@@ -553,7 +509,28 @@
   </section>
 </template>
 
-<!-- 19. MEDITÁCIÓ · futás -->
+<!-- 19. MEDITÁCIÓ · javaslat (intro állapot — Kipróbáltuk / Mást javasolj / Bezárás) -->
+<template id="screen-meditation-suggest">
+  <section class="screen screen-modal">
+    <header class="modal-header">
+      <button class="back-btn" data-action="back" aria-label="bezárás">
+        <svg width="9" height="14" viewBox="0 0 9 14"><path d="M 7.5 1 L 1.5 7 L 7.5 13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <h3 class="modal-title" data-medit-suggest-title></h3>
+      <span></span>
+    </header>
+    <div class="modal-body modal-body-medit">
+      <div class="medit-source" data-medit-suggest-source></div>
+      <div class="medit-pose-figure" data-medit-suggest-figure></div>
+      <div class="medit-intro" data-medit-suggest-intro></div>
+      <button class="btn-primary medit-cta-primary" data-action="start-meditation">✓ Kipróbáltuk</button>
+      <button class="btn-ghost medit-cta-secondary" data-action="meditation-suggest-other">↻ Mást javasolj</button>
+      <button class="btn-ghost medit-cta-tertiary" data-action="back">Bezárás</button>
+    </div>
+  </section>
+</template>
+
+<!-- 20. MEDITÁCIÓ · futás -->
 <template id="screen-meditation-run">
   <section class="screen screen-modal">
     <header class="modal-header">
@@ -565,7 +542,7 @@
     </header>
     <div class="modal-body modal-body-medit">
       <div class="medit-source" data-medit-source></div>
-      <div class="medit-intro" data-medit-intro hidden></div>
+      <div class="medit-pose-figure" data-medit-run-figure></div>
       <div class="medit-running" data-medit-running hidden>
         <div class="medit-time" data-medit-time></div>
         <div class="medit-phase" data-medit-phase></div>
@@ -575,7 +552,6 @@
         <div class="medit-outro" data-medit-outro></div>
         <button class="btn-primary" data-action="finish-meditation">Bezárom</button>
       </div>
-      <button class="btn-primary" data-action="start-meditation" data-medit-start-btn hidden>Indítom</button>
     </div>
   </section>
 </template>
@@ -593,6 +569,13 @@
         <label class="settings-label">Csillám neve</label>
         <input type="text" class="settings-input" data-rename-input maxlength="24" placeholder="pl. Csillám">
         <button class="btn-ghost" data-action="save-pici-name">átnevezés</button>
+      </div>
+
+      <div class="settings-section">
+        <label class="settings-label">Párod neve</label>
+        <p class="settings-hint">aki veled használja az appot — a toast-okban és felfedéseknél jelenik meg</p>
+        <input type="text" class="settings-input" data-partner-name-input maxlength="24" placeholder="pl. Virág">
+        <button class="btn-ghost" data-action="save-partner-name">mentés</button>
       </div>
 
       <div class="settings-section">

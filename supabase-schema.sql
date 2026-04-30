@@ -36,6 +36,35 @@ alter table pairs add column if not exists custom_pools jsonb default '{}'::json
 -- v0.8: utolsó belépési idő mindkét félnek (presence "ma volt itt" jelzéshez)
 alter table pairs add column if not exists last_seen jsonb default '{}'::jsonb;
 
+-- ════════════════════════════════════════════════════════════════════
+-- v0.9 — Csillám buborék-üzenetek
+-- ════════════════════════════════════════════════════════════════════
+-- type: 'hala' (késleltetett) | 'hangulat' (azonnal) | 'gondolok' (azonnal)
+-- delivery_at: amikor megjelenik a buborékban (lehet jövő = késleltetett)
+-- expires_at: amikor levevhetjük a buborékból (NULL = következő buborékig)
+
+create table if not exists csillam_messages (
+  id uuid primary key default gen_random_uuid(),
+  pair_id uuid references pairs(id) on delete cascade,
+  author_id text not null,
+  type text not null,
+  payload jsonb not null,
+  created_at timestamptz default now(),
+  delivery_at timestamptz not null,
+  expires_at timestamptz
+);
+
+create index if not exists csillam_messages_pair_delivery on csillam_messages (pair_id, delivery_at desc);
+
+alter publication supabase_realtime add table csillam_messages;
+alter table csillam_messages enable row level security;
+
+do $$ begin
+  if not exists (select 1 from pg_policies where tablename = 'csillam_messages' and policyname = 'open_csillam_messages') then
+    create policy "open_csillam_messages" on csillam_messages for all using (true) with check (true);
+  end if;
+end $$;
+
 -- Suttogások (csak az aktuális — egyszerre egy él)
 create table if not exists whispers (
   id uuid primary key default gen_random_uuid(),

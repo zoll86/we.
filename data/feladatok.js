@@ -1063,5 +1063,24 @@ export const feladatok = [
     "energia": 3,
     "koltseg": "alacsony",
     "ido": "reggel"
-  }
+  },
+  // ─── v0.9: hála-üzenet típusú feladatok ─────────────────────────────
+  // ezeknél tap után text-input modal nyílik; Csillám őrzi a délutáni / esti random órában kézbesíti
+  { "id": "h001", "text": "Írj egy hála-üzenetet — egy konkrét dolog amit ma a párodnál értékelsz.",         "type": "hala", "kategoria": "szo", "energia": 1, "koltseg": "ingyenes", "ido": "barmikor" },
+  { "id": "h002", "text": "Egy köszönet — Csillám később elviszi a párodnak, mikor nem várja.",              "type": "hala", "kategoria": "szo", "energia": 1, "koltseg": "ingyenes", "ido": "barmikor" },
+  { "id": "h003", "text": "Mit értékelsz a párodban mostanában? Írd le röviden, Csillám valamikor átadja.",  "type": "hala", "kategoria": "szo", "energia": 1, "koltseg": "ingyenes", "ido": "barmikor" },
+  { "id": "h004", "text": "Egy konkrét gesztusát köszönd meg, ami a héten történt.",                          "type": "hala", "kategoria": "szo", "energia": 1, "koltseg": "ingyenes", "ido": "barmikor" },
+  { "id": "h005", "text": "Egy mondatban: mit kapsz tőle most, amit nem tudsz mástól?",                       "type": "hala", "kategoria": "szo", "energia": 1, "koltseg": "ingyenes", "ido": "barmikor" },
+  { "id": "h006", "text": "Egy nem-hangos hála — Csillám átadja, mikor nem ott vagy te.",                     "type": "hala", "kategoria": "szo", "energia": 1, "koltseg": "ingyenes", "ido": "barmikor" },
+  { "id": "h007", "text": "Egy emlék a héten amiben jól voltatok együtt — köszönd meg neki.",                "type": "hala", "kategoria": "szo", "energia": 1, "koltseg": "ingyenes", "ido": "barmikor" },
+  { "id": "h008", "text": "Egy apró tulajdonságát említsd meg amit ma észrevettél.",                          "type": "hala", "kategoria": "szo", "energia": 1, "koltseg": "ingyenes", "ido": "barmikor" },
+  { "id": "h009", "text": "Egy köszönet, ami a hétköznapokba lett beépítve — neki is mondd el.",             "type": "hala", "kategoria": "szo", "energia": 1, "koltseg": "ingyenes", "ido": "barmikor" },
+  { "id": "h010", "text": "Egy mondat amit már régen szerettél volna mondani neki — most leírhatod.",        "type": "hala", "kategoria": "szo", "energia": 1, "koltseg": "ingyenes", "ido": "barmikor" },
+  // ─── v0.9: 20 mp ölelés típusú feladatok ─────────────────────────────
+  // ezeknél tap után countdown indul; "megcsináltuk" gombra végződik
+  { "id": "o001", "text": "20 másodperces ölelés ma — amikor mindketten otthon vagytok.",                     "type": "oles", "kategoria": "erintes", "energia": 1, "koltseg": "ingyenes", "ido": "hazaerkezes" },
+  { "id": "o002", "text": "Egy hosszú, csendes ölelés — semmit ne mondjatok közben.",                         "type": "oles", "kategoria": "erintes", "energia": 1, "koltseg": "ingyenes", "ido": "barmikor" },
+  { "id": "o003", "text": "20 másodperc szótlan ölelés — érezzétek a lélegzetét.",                            "type": "oles", "kategoria": "erintes", "energia": 1, "koltseg": "ingyenes", "ido": "este" },
+  { "id": "o004", "text": "Egy hosszú ölelés mielőtt elindultok valahova ma.",                                 "type": "oles", "kategoria": "erintes", "energia": 1, "koltseg": "ingyenes", "ido": "reggel" },
+  { "id": "o005", "text": "20 mp ölelés a nap végén — engedjétek le a feszültséget.",                          "type": "oles", "kategoria": "erintes", "energia": 1, "koltseg": "ingyenes", "ido": "este" },
 ];
