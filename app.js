@@ -201,14 +201,23 @@ const syncCallbacks = {
         from: isFromMe ? 'self' : 'partner',
         sentAt: archEntry.sentAt,
       },
-      // hozzáadjuk az archívumhoz is (legelső, mert legfrissebb)
       whisperArchive: [archEntry, ...state.whisperArchive.filter(w => w.id !== whisper.id)],
     });
+    // a suttogás (saját VAGY partneré) a Csillám buborékjában jelenik meg
+    setBubble({
+      id: 'suttogas-' + whisper.id,
+      type: 'suttogas',
+      payload: { text: whisper.text, fromSelf: isFromMe },
+      deliveryAt: Date.now(),
+      expiresAt: Date.now() + 12 * 60 * 60 * 1000,
+    });
+    if (!isFromMe) {
+      toast(`${state.partnerName || 'a párod'}: suttogás ❤`);
+    }
     if (currentScreen === 'home') renderWhisper();
     if (currentScreen === 'journal' && currentTab === 'suttogasok') {
       renderJournalTab(currentTab);
     }
-    if (!isFromMe) toast('új suttogás ❤');
   },
 
   onFeladatDone(entry) {
@@ -261,7 +270,6 @@ const syncCallbacks = {
     const ev = payload.eventType;
     if (ev === 'INSERT' && payload.new) {
       const v = payload.new;
-      // ne adjuk hozzá kétszer (saját INSERT esetén már lokálisan be van rakva)
       if (state.vagyak.some(x => x.id === v.id)) return;
       setState({
         vagyak: [{
@@ -271,10 +279,14 @@ const syncCallbacks = {
           doneAt: v.done_at ? new Date(v.done_at).getTime() : null,
           createdBy: v.created_by,
           createdAt: new Date(v.created_at).getTime(),
+          category: v.category || 'egyeb',
+          time_tag: v.time_tag || 'anywhen',
+          target_date: v.target_date || null,
+          lastSurfacedAt: v.last_surfaced_at ? new Date(v.last_surfaced_at).getTime() : null,
         }, ...state.vagyak],
       });
       if (v.created_by !== state.myMemberId) {
-        toast('új közös vágy ❤');
+        toast(`${state.partnerName || 'a párod'}: új jegyzet ❤`);
       }
     } else if (ev === 'UPDATE' && payload.new) {
       const v = payload.new;
@@ -284,6 +296,10 @@ const syncCallbacks = {
           text: v.text,
           note: v.note,
           doneAt: v.done_at ? new Date(v.done_at).getTime() : null,
+          category: v.category || x.category,
+          time_tag: v.time_tag || x.time_tag,
+          target_date: v.target_date || null,
+          lastSurfacedAt: v.last_surfaced_at ? new Date(v.last_surfaced_at).getTime() : null,
         } : x),
       });
     } else if (ev === 'DELETE' && payload.old) {
@@ -563,6 +579,10 @@ async function hydrateFromServer() {
       doneAt: v.done_at ? new Date(v.done_at).getTime() : null,
       createdBy: v.created_by,
       createdAt: new Date(v.created_at).getTime(),
+      category: v.category || 'egyeb',
+      time_tag: v.time_tag || 'anywhen',
+      target_date: v.target_date || null,
+      lastSurfacedAt: v.last_surfaced_at ? new Date(v.last_surfaced_at).getTime() : null,
     })),
   });
   // mit mondana — mai session + felfedett archív
@@ -931,7 +951,7 @@ function piciSVG(stage) {
       <svg width="130" height="130" viewBox="0 0 100 110" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
         <defs>
           <radialGradient id="aura-grad" cx="50%" cy="55%" r="50%">
-            <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.18"/>
+            <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.22"/>
             <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
           </radialGradient>
         </defs>
@@ -939,20 +959,27 @@ function piciSVG(stage) {
         <g transform="translate(50, 55)">
           <g class="pici-meditate-bob">
             <ellipse cx="0" cy="32" rx="26" ry="6" class="pici-body-fill" opacity="0.85"/>
-            <path d="M -22 32 Q -10 36 0 33 Q 10 36 22 32" stroke="var(--line)" stroke-width="1.2" fill="none" stroke-linecap="round" opacity="0.5"/>
             <ellipse cx="0" cy="0" rx="20" ry="27" class="pici-body-fill"/>
             <ellipse cx="-6" cy="-8" rx="7" ry="13" fill="#FFF" opacity="0.22"/>
-            <ellipse cx="-14" cy="28" rx="5" ry="3.5" class="pici-body-fill" stroke="var(--line)" stroke-width="1"/>
-            <ellipse cx="14" cy="28" rx="5" ry="3.5" class="pici-body-fill" stroke="var(--line)" stroke-width="1"/>
-            <path d="M -11 7 Q -7 11 -3 7" stroke="var(--line)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-            <path d="M 3 7 Q 7 11 11 7" stroke="var(--line)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-            <path d="M -4 23 Q 0 26 4 23" stroke="var(--line)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-            <line x1="-6" y1="-25" x2="-9" y2="-44" stroke="var(--line)" stroke-width="1.8" stroke-linecap="round"/>
-            <line x1="6" y1="-25" x2="9" y2="-44" stroke="var(--line)" stroke-width="1.8" stroke-linecap="round"/>
+            <ellipse cx="-14" cy="28" rx="5" ry="3.5" class="pici-body-fill"/>
+            <ellipse cx="14" cy="28" rx="5" ry="3.5" class="pici-body-fill"/>
+            <path d="M -11 7 Q -7 11 -3 7" stroke="#1A1714" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+            <path d="M 3 7 Q 7 11 11 7" stroke="#1A1714" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+            <path d="M -4 22 Q 0 25 4 22" stroke="#1A1714" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+            <line x1="-6" y1="-25" x2="-9" y2="-44" stroke="#1A1714" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="6" y1="-25" x2="9" y2="-44" stroke="#1A1714" stroke-width="1.8" stroke-linecap="round"/>
             <circle cx="-9" cy="-45" r="3.2" class="pici-tip-fill"/>
             <circle cx="9" cy="-45" r="3.2" class="pici-tip-fill"/>
           </g>
         </g>
+        <style>
+          .pici-body-fill { fill: var(--pici-body); }
+          .pici-tip-fill { fill: var(--pici-tip); }
+          .pici-meditate-bob { animation: pici-meditate-bob-anim 4s ease-in-out infinite; transform-origin: center; }
+          @keyframes pici-meditate-bob-anim { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.5px); } }
+          .medit-aura { animation: pici-aura-anim 4s ease-in-out infinite; transform-origin: center; }
+          @keyframes pici-aura-anim { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+        </style>
       </svg>
     `;
   }
@@ -1370,11 +1397,10 @@ const screenBindings = {
     renderPresence();
     renderCsillamBubble();
     maybeShowEveningMeditationSuggestion();
+    maybeSurfaceJegyzet();
     schedulePendingBubbles();
-    // mood popover zárva induljon
     const popover = app.querySelector('[data-mood-popover]');
     if (popover) popover.hidden = true;
-    // mm: server-frissítés a háttérben (elveszett realtime esemény ellen)
     if (syncReady && state.pairId) {
       refreshMmFromServer().then(() => {
         renderMmCard();
@@ -1409,6 +1435,20 @@ const screenBindings = {
 
   ['wish-add']() {
     setTimeout(() => app.querySelector('[data-wish-text-input]')?.focus(), 200);
+    // pirulák kattinthatóság: a csoporton belül egy aktív
+    const setupPills = (groupSel) => {
+      const group = app.querySelector(groupSel);
+      if (!group) return;
+      group.addEventListener('click', e => {
+        const btn = e.target.closest('.wish-cat-pill');
+        if (!btn) return;
+        e.preventDefault();
+        group.querySelectorAll('.wish-cat-pill').forEach(b => b.classList.remove('is-active'));
+        btn.classList.add('is-active');
+      });
+    };
+    setupPills('[data-wish-cat]');
+    setupPills('[data-wish-time]');
   },
 
   settings() {
@@ -1777,11 +1817,27 @@ function renderCsillamBubble() {
   } else if (b.type === 'hala') {
     content.textContent = `„${b.payload?.text || ''}"`;
     bubble.dataset.bubbleAction = '';
+  } else if (b.type === 'suttogas') {
+    content.textContent = `„${b.payload?.text || ''}"`;
+    bubble.dataset.bubbleAction = '';
   } else if (b.type === 'meditation-suggest') {
     content.classList.add('is-suggest');
     const med = meditations.find(m => m.id === b.payload?.meditationId);
     content.textContent = med ? `ma a ${med.title.toLowerCase()}-et javaslom` : 'elcsendesedünk?';
     bubble.dataset.bubbleAction = 'open-meditation-suggest';
+  } else if (b.type === 'jegyzet') {
+    content.classList.add('is-suggest');
+    const cat = b.payload?.category;
+    const prefix = cat === 'szulinap' ? 'eszedbe jutott — '
+                 : cat === 'film' ? 'jut eszedbe a film — '
+                 : cat === 'ajandek' ? 'eszedbe jutott — '
+                 : cat === 'terv' ? 'a közös tervetek — '
+                 : cat === 'igeret' ? 'megígértétek — '
+                 : cat === 'konyv' ? 'a könyv — '
+                 : 'eszedbe jut — ';
+    content.textContent = `${prefix}„${b.payload?.text || ''}"`;
+    bubble.dataset.bubbleAction = 'open-jegyzet';
+    bubble.dataset.vagyId = b.payload?.vagyId || '';
   }
 }
 
@@ -1836,6 +1892,93 @@ function maybeShowEveningMeditationSuggestion() {
     deliveryAt: Date.now(),
     expiresAt: null,
   });
+}
+
+// ─── v0.10: Csillám "eszedbe juttatja" a jegyzeteket a buborékban ─────
+// Súlyozás:
+//  - 7 napon belüli dátumos: nagyon valószínű (mai = még valószínűbb)
+//  - daily: gyakran (nagy súly)
+//  - weekly: közepesen
+//  - monthly: néha
+//  - yearly: ritkán
+//  - fiveyear: nagyon ritkán
+//  - anywhen: alapértelmezett kicsi súly
+//  - 14 napnál régebben felszínre került jegyzet kihagyva (nem ismétel egymás után)
+//  - már beteljesült (doneAt): kihagyva
+
+function pickJegyzetForBubble() {
+  if (!state.vagyak || state.vagyak.length === 0) return null;
+  const now = Date.now();
+  const COOLDOWN_MS = 24 * 60 * 60 * 1000; // egy napig nem ismétel
+  const candidates = [];
+  for (const v of state.vagyak) {
+    if (v.doneAt) continue;
+    if (v.lastSurfacedAt && (now - v.lastSurfacedAt) < COOLDOWN_MS) continue;
+    let weight = 1;
+    // dátum-alapú súlyozás (7 napon belüli)
+    if (v.target_date) {
+      const tgt = new Date(v.target_date);
+      const days = Math.ceil((tgt.getTime() - now) / (1000 * 60 * 60 * 24));
+      if (days >= 0 && days <= 7) weight = 100 + (8 - days) * 10;        // ma/holnap/holnapután mind kiemelt
+      else if (days < 0 && days > -3) weight = 30;                        // tegnapelőtt-tegnap is még
+      else if (days <= 30) weight = 5;
+    } else {
+      // időhorizont-alapú súlyozás
+      switch (v.time_tag) {
+        case 'daily': weight = 25; break;
+        case 'weekly': weight = 15; break;
+        case 'monthly': weight = 6; break;
+        case 'yearly': weight = 3; break;
+        case 'fiveyear': weight = 1; break;
+        default: weight = 4;
+      }
+    }
+    candidates.push({ v, weight });
+  }
+  if (candidates.length === 0) return null;
+  // súlyozott sorsolás
+  const totalWeight = candidates.reduce((s, c) => s + c.weight, 0);
+  let r = Math.random() * totalWeight;
+  for (const c of candidates) {
+    r -= c.weight;
+    if (r <= 0) return c.v;
+  }
+  return candidates[0].v;
+}
+
+async function maybeSurfaceJegyzet() {
+  // csak akkor, ha nincs aktív "fontos" buborék (hála/hangulat/meditáció)
+  if (state.activeBubble) {
+    const t = state.activeBubble.type;
+    if (t === 'hala' || t === 'hangulat' || t === 'gondolok' || t === 'meditation-suggest') return;
+  }
+  // a nap során max 1× próbáljon (lokálisan)
+  const lastTry = parseInt(localStorage.getItem('we-jegyzet-last-try') || '0', 10);
+  const sameDay = lastTry && (new Date(lastTry).toDateString() === new Date().toDateString());
+  // ne próbáljon minden home-belépésnél — kb. 30%-os valószínűség nap egyszer
+  if (sameDay) return;
+  if (Math.random() > 0.5) {
+    localStorage.setItem('we-jegyzet-last-try', Date.now().toString());
+    return; // nem most
+  }
+  const v = pickJegyzetForBubble();
+  if (!v) {
+    localStorage.setItem('we-jegyzet-last-try', Date.now().toString());
+    return;
+  }
+  // beállítjuk a buborékba
+  setBubble({
+    id: 'jegyzet-' + v.id,
+    type: 'jegyzet',
+    payload: { vagyId: v.id, text: v.text, category: v.category, target_date: v.target_date },
+    deliveryAt: Date.now(),
+    expiresAt: Date.now() + 4 * 60 * 60 * 1000,
+  });
+  localStorage.setItem('we-jegyzet-last-try', Date.now().toString());
+  // szerveren is jelöljük a felszínre kerülést (cooldown a partneren is)
+  if (syncReady) {
+    try { await sync.markVagySurfaced(v.id); } catch(e) {}
+  }
 }
 
 // ─── v0.9: Mood popover ────────────────────────────────────────────────
@@ -2098,11 +2241,10 @@ function renderJournalTab(tabId) {
 function renderVagyakTab() {
   if (!state.vagyak || state.vagyak.length === 0) {
     return `
-      <div class="empty-state">Még nincs közös vágy.<br>Az alább gombbal indítsátok el.</div>
-      <button class="add-wish-btn" data-action="open-wish-add">+ új vágy</button>
+      <div class="empty-state">Még nincs jegyzet.<br>Az alábbi gombbal indítsátok el.</div>
+      <button class="add-wish-btn" data-action="open-wish-add">+ új jegyzet</button>
     `;
   }
-  // sorrendezés: nyitott elöl, beteljesült alul
   const sorted = [...state.vagyak].sort((a, b) => {
     if (!a.doneAt && b.doneAt) return -1;
     if (a.doneAt && !b.doneAt) return 1;
@@ -2116,13 +2258,42 @@ function renderVagyakTab() {
           <div class="wish-content">
             <div class="wish-title">${escapeHtml(w.text)}</div>
             <div class="wish-meta">${w.doneAt ? `beteljesült · ${formatDate(w.doneAt)}` : formatDate(w.createdAt)}</div>
+            <div class="wish-meta">
+              ${renderWishTags(w)}
+            </div>
             ${w.note ? `<div class="wish-note">„${escapeHtml(w.note)}"</div>` : ''}
           </div>
         </div>
       `).join('')}
     </div>
-    <button class="add-wish-btn" data-action="open-wish-add">+ új vágy</button>
+    <button class="add-wish-btn" data-action="open-wish-add">+ új jegyzet</button>
   `;
+}
+
+const CAT_LABELS = {
+  szulinap: '🎂 szülinap', ajandek: '🎁 ajándékötlet', film: '🎬 film',
+  konyv: '📖 könyv', terv: '🌍 közös terv', igeret: '🤝 ígéret', egyeb: '💭 egyéb',
+};
+const TIME_LABELS = {
+  anywhen: '✨ bármikor', daily: '🌅 egy nap', weekly: '📅 egy hét',
+  monthly: '🗓 hónap', yearly: '📆 idén', fiveyear: '🏔 5 éves álom',
+};
+function renderWishTags(w) {
+  const tags = [];
+  if (w.category && w.category !== 'egyeb') tags.push(`<span class="wish-meta-tag">${CAT_LABELS[w.category] || w.category}</span>`);
+  if (w.target_date) {
+    const d = new Date(w.target_date);
+    const days = Math.ceil((d.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    let dateLabel = w.target_date;
+    if (days === 0) dateLabel = '📅 ma';
+    else if (days === 1) dateLabel = '📅 holnap';
+    else if (days > 0 && days <= 30) dateLabel = `📅 ${days} nap múlva`;
+    else if (days < 0) dateLabel = `📅 ${w.target_date}`;
+    else dateLabel = `📅 ${w.target_date}`;
+    tags.push(`<span class="wish-meta-tag is-date">${dateLabel}</span>`);
+  }
+  if (w.time_tag && w.time_tag !== 'anywhen') tags.push(`<span class="wish-meta-tag">${TIME_LABELS[w.time_tag] || w.time_tag}</span>`);
+  return tags.join('');
 }
 
 function renderSuttogasokTab() {
@@ -2454,33 +2625,39 @@ document.addEventListener('click', async e => {
 
     case 'save-wish': {
       const textEl = app.querySelector('[data-wish-text-input]');
-      const noteEl = app.querySelector('[data-wish-note-input]');
       const text = textEl?.value.trim();
-      const note = noteEl?.value.trim() || null;
       if (!text) {
-        toast('írj egy vágyat');
+        toast('írj egy jegyzetet');
         textEl?.focus();
         return;
       }
-      // optimista helyi
+      const catEl = app.querySelector('[data-wish-cat] .wish-cat-pill.is-active');
+      const timeEl = app.querySelector('[data-wish-time] .wish-cat-pill.is-active');
+      const dateEl = app.querySelector('[data-wish-date]');
+      const category = catEl?.dataset.cat || 'egyeb';
+      const time_tag = timeEl?.dataset.time || 'anywhen';
+      const target_date = dateEl?.value || null;
+
       const localId = 'local-' + Date.now();
       const now = Date.now();
       setState({
         vagyak: [{
-          id: localId, text, note, doneAt: null,
+          id: localId, text, note: null, doneAt: null,
+          category, time_tag, target_date,
           createdBy: state.myMemberId, createdAt: now,
         }, ...state.vagyak],
       });
       if (syncReady && state.pairId) {
-        const inserted = await sync.addWish(state.pairId, state.myMemberId, text, note);
+        const inserted = await sync.addWish(state.pairId, state.myMemberId, text, {
+          category, time_tag, target_date,
+        });
         if (inserted) {
-          // helyettesítjük a lokális ID-t a szerverivel
           setState({
             vagyak: state.vagyak.map(v => v.id === localId ? { ...v, id: inserted.id } : v),
           });
         }
       }
-      toast('új vágy ❤');
+      toast('elmentve ❤');
       navigate('journal');
       break;
     }
@@ -2742,8 +2919,15 @@ document.addEventListener('click', async e => {
 
     // klikk a buborékra (delegálás)
     case 'bubble-tap': {
-      const action = app.querySelector('[data-csillam-bubble]')?.dataset.bubbleAction;
-      if (action === 'open-meditation-suggest') navigate('meditation-suggest');
+      const bubble = app.querySelector('[data-csillam-bubble]');
+      const action = bubble?.dataset.bubbleAction;
+      if (action === 'open-meditation-suggest') {
+        navigate('meditation-suggest');
+      } else if (action === 'open-jegyzet') {
+        // Vágyak fülre navigálás
+        currentTab = 'vagyak';
+        navigate('journal');
+      }
       break;
     }
 

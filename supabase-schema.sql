@@ -37,6 +37,17 @@ alter table pairs add column if not exists custom_pools jsonb default '{}'::json
 alter table pairs add column if not exists last_seen jsonb default '{}'::jsonb;
 
 -- ════════════════════════════════════════════════════════════════════
+-- v0.10 — Strukturált jegyzetek (vagyak bővítés)
+-- ════════════════════════════════════════════════════════════════════
+-- A "vágy" mostantól általánosabb "jegyzet": kategóriával, opcionális
+-- dátummal, időhorizonttal. A Csillám buborék néha emlékeztet rájuk.
+
+alter table vagyak add column if not exists category text default 'egyeb';
+alter table vagyak add column if not exists target_date date;
+alter table vagyak add column if not exists time_tag text default 'anywhen';
+alter table vagyak add column if not exists last_surfaced_at timestamptz;
+
+-- ════════════════════════════════════════════════════════════════════
 -- v0.9 — Csillám buborék-üzenetek
 -- ════════════════════════════════════════════════════════════════════
 -- type: 'hala' (késleltetett) | 'hangulat' (azonnal) | 'gondolok' (azonnal)

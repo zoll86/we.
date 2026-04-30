@@ -1135,22 +1135,26 @@ input, textarea {
   flex-direction: column;
   align-items: center;
   margin-bottom: 4px;
-  padding-top: 60px;       /* hely a buboréknak felül */
+  padding-top: 90px;       /* hely a buboréknak felül - hosszabb szövegnek is */
 }
 .csillam-bubble {
   position: absolute;
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  max-width: 220px;
+  min-width: 80px;
+  max-width: min(320px, calc(100vw - 64px));
   background: var(--bg-card);
   border: 1px solid var(--accent-border);
   border-radius: 18px;
-  padding: 9px 14px;
+  padding: 10px 16px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   animation: bubble-pop 0.4s ease-out;
   cursor: pointer;
   z-index: 4;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
 }
 .csillam-bubble[hidden] { display: none !important; }
 @keyframes bubble-pop {
@@ -1250,6 +1254,72 @@ input, textarea {
   padding: 8px 18px;
 }
 .mm-reveal-status[hidden] { display: none; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   v0.10 — Strukturált jegyzet (vagyak) modal
+   ═══════════════════════════════════════════════════════════════════════ */
+.wish-section-label {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  color: var(--fg-soft);
+  text-transform: uppercase;
+  margin: 18px 0 8px;
+}
+.wish-cat-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.wish-cat-pill {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 0.5px solid var(--line);
+  background: transparent;
+  color: var(--fg-soft);
+  font-size: 12.5px;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.wish-cat-pill.is-active {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.wish-date-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 0.5px solid var(--line);
+  background: var(--bg-card);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+.wish-date-input:focus { outline: none; border-color: var(--accent); }
+
+/* vágyak fülön a meta-tag-ek */
+.wish-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.wish-meta-tag {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--bg-card-tint);
+  color: var(--fg-soft);
+  letter-spacing: 0.02em;
+}
+.wish-meta-tag.is-date {
+  color: var(--accent);
+  background: transparent;
+  border: 0.5px solid var(--accent-border);
+}
 .mood-popover .mood-btn {
   flex: 0 0 auto;
   width: 44px;
