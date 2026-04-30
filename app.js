@@ -1374,6 +1374,13 @@ const screenBindings = {
     // mood popover zárva induljon
     const popover = app.querySelector('[data-mood-popover]');
     if (popover) popover.hidden = true;
+    // mm: server-frissítés a háttérben (elveszett realtime esemény ellen)
+    if (syncReady && state.pairId) {
+      refreshMmFromServer().then(() => {
+        renderMmCard();
+        maybeAutoReveal();
+      });
+    }
   },
 
   ['whisper-compose']() {
@@ -1446,10 +1453,16 @@ const screenBindings = {
 
   ['mm-status']() {
     renderMmStatus();
+    // server-ről frissítsük — hátha közben a partner is válaszolt és nem ért át a realtime
+    refreshMmFromServer().then(() => {
+      renderMmStatus();
+      // ha közben mindkettő válaszolt, auto-reveal
+      maybeAutoReveal();
+    });
   },
 
   ['mm-reveal']() {
-    // először refresh server-ről, hogy mind a 4 válasz biztosan meglegyen
+    // mindig server-ről hidratálj, hogy mind a 4 válasz biztosan meglegyen
     refreshMmFromServer().then(() => renderMmReveal());
     renderMmReveal();
   },

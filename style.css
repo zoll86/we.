@@ -1135,26 +1135,28 @@ input, textarea {
   flex-direction: column;
   align-items: center;
   margin-bottom: 4px;
+  padding-top: 60px;       /* hely a buboréknak felül */
 }
 .csillam-bubble {
   position: absolute;
   top: 0;
-  right: -8px;
-  transform: translate(50%, -10%);
-  max-width: 200px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 220px;
   background: var(--bg-card);
   border: 1px solid var(--accent-border);
   border-radius: 18px;
-  padding: 10px 14px;
+  padding: 9px 14px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   animation: bubble-pop 0.4s ease-out;
   cursor: pointer;
   z-index: 4;
 }
+.csillam-bubble[hidden] { display: none !important; }
 @keyframes bubble-pop {
-  0% { transform: translate(50%, -10%) scale(0.4); opacity: 0; }
-  60% { transform: translate(50%, -10%) scale(1.05); opacity: 1; }
-  100% { transform: translate(50%, -10%) scale(1); opacity: 1; }
+  0% { transform: translateX(-50%) scale(0.4); opacity: 0; }
+  60% { transform: translateX(-50%) scale(1.05); opacity: 1; }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
 }
 .csillam-bubble-content {
   font-family: 'Yeseva One', serif;
@@ -1163,12 +1165,12 @@ input, textarea {
   line-height: 1.32;
   letter-spacing: -0.005em;
   color: var(--fg);
+  text-align: center;
 }
 .csillam-bubble-content.is-emoji {
-  font-size: 28px;
+  font-size: 26px;
   font-style: normal;
   line-height: 1;
-  text-align: center;
 }
 .csillam-bubble-content.is-suggest {
   text-align: center;
@@ -1176,13 +1178,13 @@ input, textarea {
 .csillam-bubble-tail {
   position: absolute;
   bottom: -7px;
-  left: 14px;
-  width: 14px;
-  height: 14px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 12px;
+  height: 12px;
   background: var(--bg-card);
   border-right: 1px solid var(--accent-border);
   border-bottom: 1px solid var(--accent-border);
-  transform: rotate(45deg);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1227,6 +1229,7 @@ input, textarea {
   border-radius: 14px;
   animation: bubble-pop 0.3s ease-out;
 }
+.mood-popover[hidden] { display: none !important; }
 .mood-popover .mood-btn {
   flex: 0 0 auto;
   width: 44px;
