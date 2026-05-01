@@ -2,129 +2,100 @@
 
 > Egy közös tér kettőtöknek.
 
-**Aktuális verzió:** v0.9 — Csillám-buborék rendszer. A csapat-funkciók eltűntek (modal megszűnt), helyette a kis figura mellett megjelenő képregény-buborék mutatja az üzeneteket. Hála-üzenet és 20 mp ölelés sorsolható feladatként, esti meditáció-javaslat 21h körül a buborékban.
+**Aktuális verzió:** v0.11 — Csillám-buborék mostantól egy **kinyitható chat-folyam**. Pislogás, hangjelzés, robosztus presence, éjféli rotáció.
 
-## ⚙️ V0.9 frissítés (ha most v0.8.1-ről jössz)
+## ⚙️ V0.11 frissítés (ha v0.10.2-ről jössz)
 
-### 1. SQL migráció — egy új tábla a csillám-buborékoknak
+### 1. SQL — nincs új migráció
 
-Supabase → SQL Editor → New query:
-
-```sql
-create table if not exists csillam_messages (
-  id uuid primary key default gen_random_uuid(),
-  pair_id uuid references pairs(id) on delete cascade,
-  author_id text not null,
-  type text not null,
-  payload jsonb not null,
-  created_at timestamptz default now(),
-  delivery_at timestamptz not null,
-  expires_at timestamptz
-);
-
-create index if not exists csillam_messages_pair_delivery on csillam_messages (pair_id, delivery_at desc);
-
-alter publication supabase_realtime add table csillam_messages;
-alter table csillam_messages enable row level security;
-
-do $$ begin
-  if not exists (select 1 from pg_policies where tablename = 'csillam_messages' and policyname = 'open_csillam_messages') then
-    create policy "open_csillam_messages" on csillam_messages for all using (true) with check (true);
-  end if;
-end $$;
-```
+A `csillam_messages` és `vagyak` táblák már megvannak v0.9 / v0.10 óta. A v0.11 csak ezeket bővebben használja.
 
 ### 2. Fájlok cseréje
 
-- `app.js`, `index.html`, `style.css`, `lib/sync.js`, `sw.js`, `supabase-schema.sql`, `README.md`
-- `data/feladatok.js` (új: hala/oles típusok)
+- `app.js`, `index.html`, `style.css`, `lib/sync.js`, `sw.js`, `README.md`
 
-A `config.js`, `data/meditations.js`, `data/kerdesek.js`, `data/mitmondana.js` változatlan.
+A `config.js`, `data/`, `pool-peldak/` változatlan.
 
 ```bash
 git add .
-git commit -m "we. v0.9 — Csillám-buborék rendszer"
+git commit -m "we. v0.11 — buborék-folyam, pislogás, hangjelzés, presence-fix, éjféli rotáció"
 git push
 ```
 
-A localStorage kulcs verziót váltottam (`we-state-v8-1` → `we-state-v9`) — mindkét telefonon **újra kell párosítani**.
+A localStorage v9 → érintetlenül marad (a `state-v9` kulcs még működik). **Nem kell újra párosítani**, csak hard refresh.
 
-## Mi az új (v0.9)
+## Mi az új (v0.11)
 
-### A csapat-funkciók modal MEG**SZŰNT**
-A v0.8-as „+ csapat-funkciók" gomb és modal eltűnt. A 6 funkció szétoszlott:
-- **Hála-üzenet** → sorsolható mai feladatként
-- **20 mp ölelés** → sorsolható mai feladatként
-- **Hangulat-megosztás** → 😊 ikon a Csillám alatt → buborék
-- **Rád gondolok** → ❤ ikon a Csillám alatt → buborék
-- **Híd-jelzés** → kihagyva (egyelőre)
-- **Meditáció-javaslat** → esti buborékban (21h körül)
+### 🫧 Csillám-buborék mint kinyitható chat-folyam
 
-### Új a Csillám szekció
-A Csillám figura mellett-felett egy kép-regény stílusú **beszéd-buborék** jelenik meg amikor van aktív üzenet. Alatta két diszkrét akció-ikon:
-- **❤** → tap → instant „rád gondolok" → mindkét telefonon a Csillám buborékjában megjelenik a ❤ (3 órán át látszik)
-- **😊** → tap → kis emoji-választó (😊 😐 😔 😴 🌟) → instant hangulat → mindkét telefonon a buborékban (12 órán át)
+Eddig a buborék **egy** üzenetet mutatott. Mostantól:
+- **Kompakt mód** (alapból): a legfrissebb üzenet, fölötte halvány felirat hogy ki küldte (TE / Virág / Csillám). Jobb felül egy pici korall jelvény *„N új"* ha érkezett valami amit nem láttál.
+- **Tap a buborékra** → **kinyílik** egy chat-szerű panel (max 360px magas, scrollozható). Ide tagolva minden üzenet — szülő-cimkével és időbélyeggel:
+  - Saját üzeneteid: jobb oldalt, halvány korall háttér
+  - Virág üzenetei: bal oldalt, semleges háttér
+  - Csillám üzenetei (meditáció-javaslat, jegyzet-emlékeztető): középen, szaggatott vonalas keret
+- **× gomb** felül jobbra → bezár
+- A meditáció-javaslat és jegyzet-emlékeztető üzenetek továbbra is **kattinthatók a folyamban**
 
-A buborék mindkét fél telefonján ugyanazt mutatja — a Csillám közöttük lakik, ő mondja.
+A folyam tartalma:
+- ❤ rád gondolok
+- 😊 hangulat-emojik
+- ✉ suttogások (a régi külön szekció **megszűnt** — minden a buborékba kerül)
+- 🌸 hála-üzenetek (késleltetett kézbesítés)
+- 🧘 meditáció-javaslatok (este 21h)
+- 💭 jegyzet-emlékeztetők (Csillám)
 
-### Hála-üzenet — időkapszula-szerű kézbesítés
-Amikor a Mai feladat sorsolt egy `hala` típusút (pl. „Írj egy hála-üzenetet — egy konkrét dolog amit ma a párodnál értékelsz."):
-1. Tap a feladat-kártyán „írok →"
-2. Egy modalban beírod a köszönetet
-3. „Csillámra bízom ❤" — a feladatot teljesítettnek jelöli
-4. Csillám őrzi és **random pillanatban (1–12 óra múlva, 8–22 közötti ablakban)** átadja
-5. Mindkét telefonon hirtelen megjelenik a buborékban — egy meglepetés
+### 🔔 Hangjelzés (egységes, kikapcsolható)
 
-Ha az írás éjszaka történne vagy késő este, a delivery automatikusan átcsúszik a következő napra (8–22h közötti random ablakba).
+Lágy két-hangú „ping" + halk vibráció (ha támogatja a böngésző) az alábbi pillanatokban:
+- ❤/😊/💬 küldéskor (saját)
+- Ha Virág bármit küld
+- Mit mondana **felfedéskor** (mindkét válasz beérkezett, automatikusan kinyílik)
 
-10 különböző hála-feladat-szöveg sorsolódik a poolból.
+**Be/ki kapcsolható a Beállításokban** (Téma alatt új sor: „Hangjelzés"). A pingek soha nem szólalnak meg meditáció közben.
 
-### 20 mp ölelés — sorsolható feladat
-Amikor a Mai feladat sorsolt egy `oles` típusút (pl. „20 másodperces ölelés ma — amikor mindketten otthon vagytok."):
-1. Tap a feladat-kártyán „indítom →"
-2. 20 másodperc countdown — ölelés közben fut
-3. Bell hang amikor lejárt
-4. „megcsináltuk ❤" gomb → feladat lezárva
+### 👁 Pislogás
 
-5 különböző ölelés-feladat-szöveg.
+A Csillám figura mind a 4 fejlődési stádiumban (baby/gyerek/tini/felnőtt) **5,5 másodpercenként** finoman pislog egyet. Élőbbé teszi a figurát.
 
-### Esti meditáció-javaslat — buborékban
-Este 21:00–22:00 között a Csillám automatikusan megjelenít egy meditáció-javaslatot a buborékban, pl. „ma a szinkron-légzést javaslom".
+### 🟢 Presence-fix
 
-Tap a buborékon → meditáció-javaslat képernyő (a régi Pici app stílusában):
-- Csillám meditáló-pózban (lótusz, behunyt szem, mosoly) megjelenik
-- Cím + forrás + bevezető szöveg
-- **✓ Kipróbáltuk** → meditáció elindul (futás-képernyő, fázis-csengetésekkel)
-- **↻ Mást javasolj** → újra sorsol egy másikat
-- **Bezárás** → vissza a home-ra
+A korábbi verzióban a két pötty néha üresen maradt akkor is, ha mindketten fent voltatok. Most:
+- A presence csatorna **join + leave** eseményeit is figyeli (nem csak a sync-et)
+- 30 másodpercenként **újra-track** (heartbeat) — Supabase realtime presence néha „elfelejti" a klienseket
+- Csatlakozás után 200ms-mel azonnali sync-et trigger-el
 
-Meditáció közben a Csillám figura **meditáló-pózba vált** (a home-on és a futás-képernyőn is). Vége után visszavált a normál pózba.
+### ⏰ Éjféli rotáció
 
-### Híd-jelzés — kihagyva
-A Híd-jelzés (📞 „beszélnünk kéne") egyelőre nem szerepel a v0.9-ben. Visszahozható később.
+Az app **automatikusan** új feladatot, kérdést és Mit mondana sessiont sorsol éjfél után 5 másodperccel:
+- A meg nem csinált feladat csendben eltűnik (B opció — a megcsinált egyébként a naplóba kerül a doneAt log-pal)
+- A függőben lévő hála-üzenetek (delivery_at jövőben) **megőrződnek** és a kézbesítési időben megjelennek a buborékban (akkor is ha az adott napi feladat már lejárt)
+- Ha az app nyitva van éjfél előtt, automatikusan átáll. Ha bezárva volt és reggel nyitod meg, akkor első home-betöltéskor.
 
-## Adatfolyam
+## Mit szinkronizálunk
 
-| Funkció | Hová ír |
+| Funkció | Hová |
 |---|---|
-| ❤ rád gondolok / 😊 hangulat / hála | **csillam_messages** tábla (azonnal vagy késleltetett delivery_at-tel) |
-| Mai feladat hala/oles teljesítve | **feladat_log** + (hala esetén) **csillam_messages** |
-| Meditáció (helyi) | csak helyileg, nem mentődik |
-| Pici név, suttogás, kérdés, vágy, mit-mondana | mint v0.8.1 |
+| ❤/😊 buborékok, hála, suttogás, meditáció-javaslat | `csillam_messages` |
+| Suttogás (régi archív is) | `whispers` (megőrizve a kompatibilitásért) |
+| Mai feladat teljesítve | `feladat_log` |
+| Mai kérdés megbeszélve | `kerdesek` |
+| Strukturált jegyzet | `vagyak` |
+| Mit mondana válasz | `mit_mondana_responses` |
+| Presence (épp most) | Supabase Realtime presence |
+| Presence (ma volt itt) | `pairs.last_seen` |
+| Hangjelzés-preferencia | csak helyileg |
 
-A buborék-üzenetek 1–12 órán át láthatók (típusonként eltérő `expires_at`). A legfrissebb aktív üzenet jelenik meg.
+## Mi NINCS v0.11-ben
 
-## Mi NINCS v0.9-ben
+- A buborék-folyamban a Csillám soha nem ír önmagától „beszélgetésbe" (csak meditáció-javaslat és jegyzet-emlékeztető)
+- A folyamból nem lehet törölni egyedi üzeneteket (a `expires_at` alapján maguktól lejárnak)
+- Nem küldhet olvasási visszajelzést (a Suttogásnál direkt — eredeti alapelv)
+- Híd-jelzés még mindig kihagyva
 
-- Híd-jelzés
-- Meditáció szerver-oldali logging (nincs partner-jelzés „ő is meditál")
-- Hála-üzenet „úton ❤" indikátor a saját telefonon (rejtett meglepetés mindkettőtöknek)
+## Mi jön
 
-## Mi jön (v0.10)
-
-- Polish + Auth + szigorúbb RLS
-- Esetleg Híd-jelzés visszahozás
-- Visszhang, Évforduló-szellem, Zenei időkapszula, Színes nap (a tervezetből)
+A v0.12 valószínűleg a polish, Auth bevezetés, és szigorúbb RLS-policy-k.
 
 ---
 

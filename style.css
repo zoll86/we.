@@ -1195,6 +1195,156 @@ input, textarea {
   border-bottom: 1px solid var(--accent-border);
 }
 
+/* v0.11 — Buborék-folyam: szerző és számláló a kompakt módban */
+.bubble-author {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-soft);
+  margin-bottom: 4px;
+  font-family: 'Manrope', sans-serif;
+  font-style: normal;
+  opacity: 0.7;
+}
+.bubble-counter {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: var(--accent);
+  color: var(--bg);
+  font-family: 'Manrope', sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+/* v0.11 — Buborék KIBONTOTT módban (folyam) */
+.csillam-bubble.is-expanded {
+  /* nagyobb panel — chat-szerű */
+  width: calc(100vw - 32px);
+  max-width: 480px;
+  min-width: 280px;
+  padding: 14px 14px 18px;
+  text-align: left;
+  cursor: default;
+  /* magasság-korlát hogy alulról a többi tartalom is látható maradjon */
+  max-height: 360px;
+  display: flex;
+  flex-direction: column;
+}
+.csillam-bubble.is-expanded .csillam-bubble-tail {
+  bottom: -7px;
+}
+.csillam-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  flex: 1;
+  -webkit-overflow-scrolling: touch;
+  /* fade-out az aljánál hogy érződjön hogy scrollozható */
+  mask-image: linear-gradient(to bottom, transparent 0, black 12px, black calc(100% - 12px), transparent 100%);
+}
+.csillam-bubble-empty {
+  padding: 18px 8px;
+  text-align: center;
+  color: var(--fg-soft);
+  font-size: 12.5px;
+  font-style: italic;
+}
+.bubble-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  background: transparent;
+  border: none;
+  color: var(--fg-soft);
+  font-size: 22px;
+  font-weight: 300;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  border-radius: 50%;
+  transition: background 0.15s;
+}
+.bubble-close:active { background: var(--bg-card-tint); }
+
+/* egy üzenet a folyamban */
+.stream-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--bg-card-tint);
+  font-family: 'Yeseva One', serif;
+  font-style: italic;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.stream-msg.is-self {
+  background: var(--accent-soft, var(--bg-card-tint));
+  border: 0.5px solid var(--accent-border);
+  align-self: flex-end;
+  max-width: 85%;
+}
+.stream-msg.is-partner {
+  align-self: flex-start;
+  max-width: 85%;
+}
+.stream-msg.is-csillam {
+  align-self: center;
+  max-width: 90%;
+  font-style: italic;
+  border: 0.5px dashed var(--accent-border);
+  background: transparent;
+  color: var(--accent);
+}
+.stream-msg[data-stream-action] { cursor: pointer; }
+.stream-msg[data-stream-action]:active { transform: scale(0.99); }
+.stream-msg-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-family: 'Manrope', sans-serif;
+  font-style: normal;
+}
+.stream-msg-author {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-soft);
+  opacity: 0.75;
+}
+.stream-msg-time {
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  color: var(--fg-soft);
+  opacity: 0.55;
+}
+.stream-msg-body {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+.stream-msg-body.is-emoji {
+  font-size: 22px;
+  font-style: normal;
+  line-height: 1;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    v0.9 — Csillám akció-ikonok (❤ ·  😊)
    ═══════════════════════════════════════════════════════════════════════ */

@@ -195,18 +195,10 @@
         </button>
       </header>
 
-      <!-- Suttogó (csak a partneré jelenik meg a logó alatt; a compose-gomb a Csillám alá került) -->
-      <div class="whisper-section" data-whisper>
-        <p class="whisper-empty">még nincs suttogás — küldj egyet a Csillám alatti ikonnal</p>
-      </div>
-
-      <!-- Hero / Csillám -->
+      <!-- Hero / Csillám (a suttogás most a Csillám-buborék folyamában van) -->
       <div class="hero">
         <div class="csillam-wrap">
-          <div class="csillam-bubble" data-csillam-bubble data-action="bubble-tap" hidden>
-            <div class="csillam-bubble-content" data-csillam-bubble-content></div>
-            <div class="csillam-bubble-tail"></div>
-          </div>
+          <div class="csillam-bubble" data-csillam-bubble data-action="bubble-tap" hidden></div>
           <div class="pici-figure" data-pici-figure></div>
         </div>
         <h2 class="pici-name" data-pici-name></h2>
@@ -631,6 +623,15 @@
           <button class="pill" data-theme-pick="auto">automatikus</button>
           <button class="pill" data-theme-pick="light">világos</button>
           <button class="pill" data-theme-pick="dark">sötét</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <label class="settings-label">Hangjelzés</label>
+        <p class="settings-hint">lágy ping üzenet érkezésekor és Mit mondana felfedéskor</p>
+        <div class="theme-row">
+          <button class="pill" data-sound-pick="on">be</button>
+          <button class="pill" data-sound-pick="off">ki</button>
         </div>
       </div>
 

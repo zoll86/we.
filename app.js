@@ -38,6 +38,7 @@ const defaultState = {
   mmToday: null,
   mmArchive: [],
   themePref: 'auto',
+  soundEnabled: true,           // v0.11: hangjelzés be/ki
   customPools: {},
   partnerName: null,
   // presence
@@ -45,11 +46,15 @@ const defaultState = {
   partnerSeenToday: false,
   // meditáció
   activeMedit: null,
-  meditSuggestId: null,         // mai sorsolt meditáció — a Csillám esti javaslatához
+  meditSuggestId: null,
   // v0.9 — Csillám-buborék
-  activeBubble: null,           // { id, type, payload, deliveryAt, expiresAt }
-  pendingBubbleMessages: [],    // jövőbeli kézbesítések (időzítendő)
+  activeBubble: null,
+  pendingBubbleMessages: [],
   moodPickerOpen: false,
+  // v0.11 — buborék-folyam (chat-szerű, kinyitható)
+  bubbleHistory: [],            // teljes idővonal (legrégibb elöl)
+  bubbleExpanded: false,
+  bubbleUnseenCount: 0,
   // ölelés (helyi futás)
   olesStartedAt: null,
   hasSeenArrival: false,
@@ -438,29 +443,50 @@ const syncCallbacks = {
     if (ev === 'DELETE') return;
     if (!payload.new) return;
     const m = payload.new;
+    const fromPartner = m.author_id !== state.myMemberId;
     const msg = {
       id: m.id,
+      authorId: m.author_id,
       type: m.type,
       payload: m.payload || {},
       deliveryAt: new Date(m.delivery_at).getTime(),
       expiresAt: m.expires_at ? new Date(m.expires_at).getTime() : null,
     };
     const now = Date.now();
+    // history frissítése (mindenképp)
+    const histExists = state.bubbleHistory.some(h => h.id === m.id);
+    if (!histExists && msg.deliveryAt <= now) {
+      const histEntry = {
+        id: m.id,
+        author_id: m.author_id,
+        type: m.type,
+        payload: m.payload || {},
+        delivery_at: m.delivery_at,
+      };
+      const newHist = [...state.bubbleHistory, histEntry]
+        .sort((a, b) => new Date(a.delivery_at) - new Date(b.delivery_at))
+        .slice(-100);
+      setState({ bubbleHistory: newHist });
+    }
+
     if (msg.deliveryAt <= now) {
-      // azonnal kézbesítendő
       setBubble(msg);
-      // toast a partneré
-      if (m.author_id !== state.myMemberId) {
+      if (fromPartner) {
+        playPing();
+        // unseen counter növelése
+        setState({ bubbleUnseenCount: state.bubbleUnseenCount + 1 });
         if (msg.type === 'hala') {
           toast(`${state.partnerName || 'a párod'}: hála ❤`);
         } else if (msg.type === 'hangulat') {
           toast(`${state.partnerName || 'a párod'}: ${msg.payload?.emoji || '😊'}`);
         } else if (msg.type === 'gondolok') {
           toast(`${state.partnerName || 'a párod'}: rád gondol ❤`);
+        } else if (msg.type === 'suttogas') {
+          toast(`${state.partnerName || 'a párod'}: suttogás ❤`);
         }
       }
+      if (currentScreen === 'home') renderCsillamBubble();
     } else {
-      // jövőbeli kézbesítés — időzítéshez tárljuk
       const pending = state.pendingBubbleMessages.filter(p => p.id !== msg.id);
       setState({ pendingBubbleMessages: [...pending, msg] });
       schedulePendingBubbles();
@@ -603,6 +629,7 @@ async function hydrateFromServer() {
     setState({
       activeBubble: {
         id: activeMsg.id,
+        authorId: activeMsg.author_id,
         type: activeMsg.type,
         payload: activeMsg.payload || {},
         deliveryAt: new Date(activeMsg.delivery_at).getTime(),
@@ -614,12 +641,17 @@ async function hydrateFromServer() {
   setState({
     pendingBubbleMessages: pendingMsgs.map(m => ({
       id: m.id,
+      authorId: m.author_id,
       type: m.type,
       payload: m.payload || {},
       deliveryAt: new Date(m.delivery_at).getTime(),
       expiresAt: m.expires_at ? new Date(m.expires_at).getTime() : null,
     })),
   });
+
+  // v0.11: teljes folyam-történet
+  const history = await sync.loadCsillamHistory(state.pairId, 50);
+  setState({ bubbleHistory: history });
 
   // v0.8: presence — ma volt itt jelölés (last_seen)
   if (pair?.last_seen && state.partnerMemberId) {
@@ -992,8 +1024,8 @@ function piciSVG(stage) {
           <ellipse cx="0" cy="14" rx="16" ry="20" class="pici-body-fill"/>
           <ellipse cx="-5" cy="8" rx="5" ry="9" fill="#FFF" opacity="0.3"/>
           <circle cx="0" cy="14" r="1.5" class="pici-tip-fill" opacity="0.7"/>
-          <circle cx="-7" cy="0" r="3.8" fill="#1A1714"/>
-          <circle cx="7" cy="0" r="3.8" fill="#1A1714"/>
+          <circle class="pici-eye" cx="-7" cy="0" r="3.8" fill="#1A1714"/>
+          <circle class="pici-eye" cx="7" cy="0" r="3.8" fill="#1A1714"/>
           <circle cx="-6" cy="-1.5" r="1.4" fill="#FFF"/>
           <circle cx="8" cy="-1.5" r="1.4" fill="#FFF"/>
           <ellipse cx="0" cy="13" rx="2.5" ry="1.5" fill="#1A1714"/>
@@ -1005,6 +1037,8 @@ function piciSVG(stage) {
           .pici-tip-fill { fill: var(--pici-tip); }
           @keyframes pici-bob-anim { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
           .pici-bob { animation: pici-bob-anim 2.2s ease-in-out infinite; transform-origin: center; }
+          @keyframes pici-blink { 0%, 92%, 100% { transform: scaleY(1); } 95%, 97% { transform: scaleY(0.08); } }
+          .pici-eye { animation: pici-blink 5.5s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
         </style>
       </svg>
     `;
@@ -1021,8 +1055,8 @@ function piciSVG(stage) {
           <ellipse cx="6" cy="38" rx="4" ry="2.5" class="pici-body-fill"/>
           <circle cx="2" cy="14" r="1.5" class="pici-tip-fill" opacity="0.7"/>
           <circle cx="-3" cy="22" r="1" class="pici-tip-fill" opacity="0.6"/>
-          <ellipse cx="-7" cy="2" rx="4" ry="4.7" fill="#1A1714"/>
-          <ellipse cx="7" cy="2" rx="4" ry="4.7" fill="#1A1714"/>
+          <ellipse class="pici-eye" cx="-7" cy="2" rx="4" ry="4.7" fill="#1A1714"/>
+          <ellipse class="pici-eye" cx="7" cy="2" rx="4" ry="4.7" fill="#1A1714"/>
           <circle cx="-6" cy="0.5" r="1.4" fill="#FFF"/>
           <circle cx="8" cy="0.5" r="1.4" fill="#FFF"/>
           <path d="M -5 16 Q 0 21 5 16" stroke="#1A1714" stroke-width="1.5" fill="none" stroke-linecap="round"/>
@@ -1036,6 +1070,8 @@ function piciSVG(stage) {
           .pici-tip-fill { fill: var(--pici-tip); }
           @keyframes pici-bob-anim { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
           .pici-bob { animation: pici-bob-anim 2.4s ease-in-out infinite; transform-origin: center; }
+          @keyframes pici-blink { 0%, 92%, 100% { transform: scaleY(1); } 95%, 97% { transform: scaleY(0.08); } }
+          .pici-eye { animation: pici-blink 5.5s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
         </style>
       </svg>
     `;
@@ -1054,8 +1090,8 @@ function piciSVG(stage) {
           <ellipse cx="7" cy="42" rx="4.5" ry="2.8" class="pici-body-fill"/>
           <circle cx="2" cy="15" r="1.5" class="pici-tip-fill" opacity="0.7"/>
           <circle cx="-3" cy="23" r="1" class="pici-tip-fill" opacity="0.6"/>
-          <ellipse cx="-7" cy="3" rx="4" ry="4.6" fill="#1A1714"/>
-          <ellipse cx="7" cy="3" rx="4" ry="4.6" fill="#1A1714"/>
+          <ellipse class="pici-eye" cx="-7" cy="3" rx="4" ry="4.6" fill="#1A1714"/>
+          <ellipse class="pici-eye" cx="7" cy="3" rx="4" ry="4.6" fill="#1A1714"/>
           <circle cx="-6" cy="1.5" r="1.4" fill="#FFF"/>
           <circle cx="8" cy="1.5" r="1.4" fill="#FFF"/>
           <path d="M -6 17 Q 0 23 6 17" stroke="#1A1714" stroke-width="1.5" fill="none" stroke-linecap="round"/>
@@ -1086,8 +1122,8 @@ function piciSVG(stage) {
         <ellipse cx="7" cy="44" rx="5" ry="3" class="pici-body-fill"/>
         <circle cx="2" cy="16" r="1.5" class="pici-tip-fill" opacity="0.7"/>
         <circle cx="-3" cy="24" r="1" class="pici-tip-fill" opacity="0.6"/>
-        <ellipse cx="-7" cy="4" rx="4" ry="4.5" fill="#1A1714"/>
-        <ellipse cx="7" cy="4" rx="4" ry="4.5" fill="#1A1714"/>
+        <ellipse class="pici-eye" cx="-7" cy="4" rx="4" ry="4.5" fill="#1A1714"/>
+        <ellipse class="pici-eye" cx="7" cy="4" rx="4" ry="4.5" fill="#1A1714"/>
         <circle cx="-6" cy="2.5" r="1.4" fill="#FFF"/>
         <circle cx="8" cy="2.5" r="1.4" fill="#FFF"/>
         <path d="M -6 18 Q 0 24 6 18" stroke="#1A1714" stroke-width="1.5" fill="none" stroke-linecap="round"/>
@@ -1101,6 +1137,8 @@ function piciSVG(stage) {
         .pici-tip-fill { fill: var(--pici-tip); }
         @keyframes pici-bob-anim { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
         .pici-bob { animation: pici-bob-anim 2.5s ease-in-out infinite; transform-origin: center; }
+        @keyframes pici-blink { 0%, 92%, 100% { transform: scaleY(1); } 95%, 97% { transform: scaleY(0.08); } }
+        .pici-eye { animation: pici-blink 5.5s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
       </style>
     </svg>
   `;
@@ -1148,6 +1186,41 @@ function ensureTodayTask() {
   if (!state.todayTask || state.todayTask.day !== todayKey()) {
     drawNewTask();
   }
+}
+
+// v0.11: éjféli rotáció — ha az app nyitva marad, automatikusan új nap, új feladat
+let midnightTimer = null;
+function scheduleMidnightRotation() {
+  if (midnightTimer) { clearTimeout(midnightTimer); midnightTimer = null; }
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(24, 0, 5, 0); // éjfél után 5 mp-cel (race-condition elkerüléshez)
+  const delay = next.getTime() - now.getTime();
+  midnightTimer = setTimeout(() => {
+    // nem mentődik meg a régi feladat ha nem lett kész — csendben eltűnik (B opció)
+    drawNewTask();
+    // mai kérdés is új sorsolás, ha új nap
+    if (state.todayQuestionDay !== todayKey()) {
+      const q = pickTodayQuestion();
+      setState({
+        todayQuestionDay: todayKey(),
+        todayQuestionText: q.text,
+        todayQuestionDoneAt: null,
+        pendingArchiveQuestion: null,
+      });
+    }
+    // mit mondana is megújul (új session lesz a következő használatkor)
+    if (state.mmToday && state.mmToday.date !== todayKey()) {
+      setState({ mmToday: null });
+    }
+    if (currentScreen === 'home') {
+      renderTask();
+      renderQuestionCard();
+      renderMmCard();
+    }
+    toast('új nap, új feladat ❤');
+    scheduleMidnightRotation(); // a következő éjfél is
+  }, delay);
 }
 
 function drawNewTask(excludeId = null) {
@@ -1233,6 +1306,8 @@ async function maybeAutoReveal() {
   if (syncReady && !t.sessionId.startsWith('local-')) {
     await sync.revealMitMondana(t.sessionId, null);
   }
+  // hangjelzés a felfedéshez
+  playPing();
   // a megfelelő képernyő frissítése
   if (currentScreen === 'home') renderMmCard();
   else if (currentScreen === 'mm-input' || currentScreen === 'mm-status') {
@@ -1391,7 +1466,6 @@ const screenBindings = {
     app.querySelector('[data-pici-name]').textContent = state.piciName || 'Csillám';
     ensureTodayTask();
     renderTask();
-    renderWhisper();
     renderQuestionCard();
     renderMmCard();
     renderPresence();
@@ -1465,6 +1539,10 @@ const screenBindings = {
     // téma pirulák
     app.querySelectorAll('[data-theme-pick]').forEach(btn => {
       btn.classList.toggle('is-active', btn.dataset.themePick === (state.themePref || 'auto'));
+    });
+    // hangjelzés pirulák
+    app.querySelectorAll('[data-sound-pick]').forEach(btn => {
+      btn.classList.toggle('is-active', btn.dataset.soundPick === (state.soundEnabled ? 'on' : 'off'));
     });
     // pool státuszok
     refreshPoolStatuses();
@@ -1788,16 +1866,107 @@ function renderEveningBubble() {
 // ─── v0.9: Csillám-buborék rendszer ────────────────────────────────────
 
 // renderelés: csak akkor jelenik meg, ha van aktív bubble és nem expirált
+function describeBubbleMessage(m) {
+  // visszaadja: { author: 'self'|'partner'|'csillam', text: string, isEmoji: bool, action: string }
+  const isFromMe = m.author_id === state.myMemberId;
+  const author = m.type === 'meditation-suggest' || m.type === 'jegyzet' ? 'csillam' : (isFromMe ? 'self' : 'partner');
+  let text = '';
+  let isEmoji = false;
+  let action = '';
+  if (m.type === 'hangulat' || m.type === 'gondolok') {
+    text = m.payload?.emoji || (m.type === 'gondolok' ? '❤' : '😊');
+    isEmoji = true;
+  } else if (m.type === 'hala') {
+    text = `„${m.payload?.text || ''}"`;
+  } else if (m.type === 'suttogas') {
+    text = `„${m.payload?.text || ''}"`;
+  } else if (m.type === 'meditation-suggest') {
+    const med = meditations.find(med => med.id === m.payload?.meditationId);
+    text = med ? `ma a ${med.title.toLowerCase()}-et javaslom` : 'elcsendesedünk?';
+    action = 'open-meditation-suggest';
+  } else if (m.type === 'jegyzet') {
+    const cat = m.payload?.category;
+    const prefix = cat === 'szulinap' ? 'eszedbe jutott — '
+                 : cat === 'film' ? 'jut eszedbe a film — '
+                 : cat === 'ajandek' ? 'eszedbe jutott — '
+                 : cat === 'terv' ? 'a közös tervetek — '
+                 : cat === 'igeret' ? 'megígértétek — '
+                 : cat === 'konyv' ? 'a könyv — '
+                 : 'eszedbe jut — ';
+    text = `${prefix}„${m.payload?.text || ''}"`;
+    action = 'open-jegyzet';
+  }
+  return { author, text, isEmoji, action };
+}
+
+function authorLabel(author) {
+  if (author === 'self') return 'te';
+  if (author === 'partner') return state.partnerName || 'ő';
+  return state.piciName || 'Csillám';
+}
+
 function renderCsillamBubble() {
   const bubble = app.querySelector('[data-csillam-bubble]');
-  const content = app.querySelector('[data-csillam-bubble-content]');
-  if (!bubble || !content) return;
+  if (!bubble) return;
+  const expanded = state.bubbleExpanded;
+
+  // ha nincs sem aktív bubble, sem history → elrejtve
+  if ((!state.activeBubble || (state.activeBubble.expiresAt && Date.now() > state.activeBubble.expiresAt))
+      && (!state.bubbleHistory || state.bubbleHistory.length === 0)) {
+    bubble.hidden = true;
+    bubble.classList.remove('is-expanded');
+    return;
+  }
+
+  bubble.hidden = false;
+  bubble.classList.toggle('is-expanded', expanded);
+
+  if (expanded) {
+    // FOLYAM-MÓD — scrollozható lista
+    const items = state.bubbleHistory.slice(-50);
+    if (items.length === 0) {
+      bubble.innerHTML = `<div class="csillam-bubble-empty">még nincs üzenet</div>`;
+      return;
+    }
+    bubble.innerHTML = `
+      <div class="csillam-stream">
+        ${items.map(m => {
+          const d = describeBubbleMessage(m);
+          const ts = new Date(m.delivery_at);
+          const today = new Date();
+          const sameDay = ts.toDateString() === today.toDateString();
+          const time = sameDay
+            ? `${String(ts.getHours()).padStart(2,'0')}:${String(ts.getMinutes()).padStart(2,'0')}`
+            : `${ts.getMonth()+1}.${ts.getDate()}.`;
+          const cls = d.author === 'self' ? 'is-self' : d.author === 'partner' ? 'is-partner' : 'is-csillam';
+          return `
+            <div class="stream-msg ${cls}" ${d.action ? `data-stream-action="${d.action}"` : ''}>
+              <div class="stream-msg-head">
+                <span class="stream-msg-author">${escapeHtml(authorLabel(d.author))}</span>
+                <span class="stream-msg-time">${time}</span>
+              </div>
+              <div class="stream-msg-body ${d.isEmoji ? 'is-emoji' : ''}">${escapeHtml(d.text)}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <button class="bubble-close" data-action="close-bubble-stream" aria-label="bezár">×</button>
+      <div class="csillam-bubble-tail"></div>
+    `;
+    // automatikus scroll a végére
+    setTimeout(() => {
+      const stream = bubble.querySelector('.csillam-stream');
+      if (stream) stream.scrollTop = stream.scrollHeight;
+    }, 50);
+    return;
+  }
+
+  // KOMPAKT MÓD — utolsó üzenet
   const b = state.activeBubble;
   if (!b) {
     bubble.hidden = true;
     return;
   }
-  // ellenőrzés: érvényes-e még?
   const now = Date.now();
   if (b.expiresAt && now > b.expiresAt) {
     setState({ activeBubble: null });
@@ -1808,42 +1977,48 @@ function renderCsillamBubble() {
     bubble.hidden = true;
     return;
   }
-  bubble.hidden = false;
-  content.classList.remove('is-emoji', 'is-suggest');
-  if (b.type === 'hangulat' || b.type === 'gondolok') {
-    content.classList.add('is-emoji');
-    content.textContent = b.payload?.emoji || (b.type === 'gondolok' ? '❤' : '😊');
-    bubble.dataset.bubbleAction = '';
-  } else if (b.type === 'hala') {
-    content.textContent = `„${b.payload?.text || ''}"`;
-    bubble.dataset.bubbleAction = '';
-  } else if (b.type === 'suttogas') {
-    content.textContent = `„${b.payload?.text || ''}"`;
-    bubble.dataset.bubbleAction = '';
-  } else if (b.type === 'meditation-suggest') {
-    content.classList.add('is-suggest');
-    const med = meditations.find(m => m.id === b.payload?.meditationId);
-    content.textContent = med ? `ma a ${med.title.toLowerCase()}-et javaslom` : 'elcsendesedünk?';
-    bubble.dataset.bubbleAction = 'open-meditation-suggest';
-  } else if (b.type === 'jegyzet') {
-    content.classList.add('is-suggest');
-    const cat = b.payload?.category;
-    const prefix = cat === 'szulinap' ? 'eszedbe jutott — '
-                 : cat === 'film' ? 'jut eszedbe a film — '
-                 : cat === 'ajandek' ? 'eszedbe jutott — '
-                 : cat === 'terv' ? 'a közös tervetek — '
-                 : cat === 'igeret' ? 'megígértétek — '
-                 : cat === 'konyv' ? 'a könyv — '
-                 : 'eszedbe jut — ';
-    content.textContent = `${prefix}„${b.payload?.text || ''}"`;
-    bubble.dataset.bubbleAction = 'open-jegyzet';
-    bubble.dataset.vagyId = b.payload?.vagyId || '';
-  }
+
+  // construáljuk a szöveget. A buborék kompakt módban is mutatja: ki küldte | szöveg
+  // Az `activeBubble` payload-ja lehet hogy nem tartalmaz author_id-t (helyi optimista).
+  // De van b.authorId (ha van), egyébként önmagunké
+  const fakeMsg = {
+    author_id: b.authorId || state.myMemberId,
+    type: b.type,
+    payload: b.payload,
+    delivery_at: new Date(b.deliveryAt).toISOString(),
+  };
+  const d = describeBubbleMessage(fakeMsg);
+  const newCount = state.bubbleUnseenCount;
+  const counterHtml = newCount > 0 ? `<span class="bubble-counter">${newCount}</span>` : '';
+  const bodyClasses = ['csillam-bubble-content'];
+  if (d.isEmoji) bodyClasses.push('is-emoji');
+  if (b.type === 'meditation-suggest' || b.type === 'jegyzet') bodyClasses.push('is-suggest');
+
+  bubble.innerHTML = `
+    <div class="bubble-author">${escapeHtml(authorLabel(d.author))}</div>
+    <div class="${bodyClasses.join(' ')}">${escapeHtml(d.text)}</div>
+    ${counterHtml}
+    <div class="csillam-bubble-tail"></div>
+  `;
+  bubble.dataset.bubbleAction = d.action;
 }
 
 function setBubble(message) {
-  // beállít egy aktív buborékot, frissíti a UI-t
   setState({ activeBubble: message });
+  // hozzáadjuk a history-hoz is (lokális mirror-ként)
+  if (message && message.id) {
+    const exists = state.bubbleHistory.some(h => h.id === message.id);
+    if (!exists) {
+      const histEntry = {
+        id: message.id,
+        author_id: message.authorId || state.myMemberId,
+        type: message.type,
+        payload: message.payload,
+        delivery_at: new Date(message.deliveryAt).toISOString(),
+      };
+      setState({ bubbleHistory: [...state.bubbleHistory, histEntry].slice(-100) });
+    }
+  }
   if (currentScreen === 'home') renderCsillamBubble();
 }
 
@@ -2045,6 +2220,40 @@ function playBell() {
     });
   } catch (e) {
     console.warn('[medit] bell hiba:', e);
+  }
+}
+
+// v0.11: rövid kis ping (üzenet érkezett / mit mondana felfedés)
+function playPing() {
+  if (!state.soundEnabled) return;
+  try {
+    if (!meditAudioCtx) {
+      meditAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    const ctx = meditAudioCtx;
+    const now = ctx.currentTime;
+    // egy lágy két-hangú ping (G4 → C5)
+    [
+      { freq: 392, t: 0,    dur: 0.18 },
+      { freq: 523, t: 0.10, dur: 0.32 },
+    ].forEach(({ freq, t, dur }) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, now + t);
+      gain.gain.linearRampToValueAtTime(0.10, now + t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + t + dur);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now + t);
+      osc.stop(now + t + dur + 0.05);
+    });
+    // kis vibráció ha támogatja a böngésző
+    if (navigator.vibrate) {
+      try { navigator.vibrate([15, 40, 15]); } catch(e) {}
+    }
+  } catch (e) {
+    console.warn('[ping] hiba:', e);
   }
 }
 
@@ -2489,6 +2698,22 @@ function formatTime(timestamp) {
 // ═══════════════════════════════════════════════════════════════════════
 
 document.addEventListener('click', async e => {
+  // stream-msg kattintás (a buborék-folyamban)
+  const streamMsg = e.target.closest('.stream-msg[data-stream-action]');
+  if (streamMsg) {
+    const sa = streamMsg.dataset.streamAction;
+    if (sa === 'open-meditation-suggest') {
+      setState({ bubbleExpanded: false });
+      navigate('meditation-suggest');
+      return;
+    } else if (sa === 'open-jegyzet') {
+      setState({ bubbleExpanded: false });
+      currentTab = 'vagyak';
+      navigate('journal');
+      return;
+    }
+  }
+
   const actionEl = e.target.closest('[data-action]');
   if (!actionEl) return;
   const action = actionEl.dataset.action;
@@ -2530,7 +2755,15 @@ document.addEventListener('click', async e => {
       });
       if (syncReady && state.pairId) {
         await sync.sendWhisper(state.pairId, state.myMemberId, text);
+        // a buborék-folyamba is bekerül (egységes idővonalhoz)
+        await sync.createCsillamMessage(
+          state.pairId, state.myMemberId, 'suttogas',
+          { text },
+          new Date(),
+          new Date(Date.now() + 12 * 60 * 60 * 1000)
+        );
       }
+      playPing();
       toast('elküldve ✓');
       navigate('home');
       break;
@@ -2770,16 +3003,16 @@ document.addEventListener('click', async e => {
         heartBtn.classList.add('is-pulsing');
         setTimeout(() => heartBtn.classList.remove('is-pulsing'), 600);
       }
-      // helyileg azonnal megjelenik a buborékban
       const localMsg = {
         id: 'local-gondolok-' + Date.now(),
+        authorId: state.myMemberId,
         type: 'gondolok',
         payload: { emoji: '❤' },
         deliveryAt: Date.now(),
-        expiresAt: Date.now() + 3 * 60 * 60 * 1000, // 3h
+        expiresAt: Date.now() + 3 * 60 * 60 * 1000,
       };
       setBubble(localMsg);
-      // szerveren is — mindkét fél buborékjába kerül
+      playPing();
       if (syncReady && state.pairId) {
         await sync.createCsillamMessage(
           state.pairId, state.myMemberId, 'gondolok',
@@ -2792,25 +3025,25 @@ document.addEventListener('click', async e => {
       break;
     }
 
-    // 😊 → mood popover megnyitás/zárás
     case 'open-mood-picker': {
       toggleMoodPicker();
       break;
     }
 
-    // mood emoji választás → instant buborék
     case 'pick-mood': {
       const emoji = actionEl.dataset.emoji;
       if (!emoji) return;
       toggleMoodPicker(false);
       const localMsg = {
         id: 'local-hangulat-' + Date.now(),
+        authorId: state.myMemberId,
         type: 'hangulat',
         payload: { emoji },
         deliveryAt: Date.now(),
-        expiresAt: Date.now() + 12 * 60 * 60 * 1000, // 12h (este→reggel)
+        expiresAt: Date.now() + 12 * 60 * 60 * 1000,
       };
       setBubble(localMsg);
+      playPing();
       if (syncReady && state.pairId) {
         await sync.createCsillamMessage(
           state.pairId, state.myMemberId, 'hangulat',
@@ -2931,12 +3164,29 @@ document.addEventListener('click', async e => {
 
     // klikk a buborékra (delegálás)
     case 'bubble-tap': {
-      const bubble = app.querySelector('[data-csillam-bubble]');
-      const action = bubble?.dataset.bubbleAction;
-      if (action === 'open-meditation-suggest') {
+      // ha kinyitva van, ne csináljunk semmit (a stream-msg-ek külön kezelve)
+      if (state.bubbleExpanded) break;
+      // expand-eljük a folyamot
+      setState({ bubbleExpanded: true, bubbleUnseenCount: 0 });
+      renderCsillamBubble();
+      break;
+    }
+
+    case 'close-bubble-stream': {
+      setState({ bubbleExpanded: false });
+      renderCsillamBubble();
+      break;
+    }
+
+    case 'stream-msg-tap': {
+      // kinyitott folyamban a meditáció / jegyzet üzenetre kattintás
+      const targetEl = e.target.closest('.stream-msg[data-stream-action]');
+      const sa = targetEl?.dataset.streamAction;
+      if (sa === 'open-meditation-suggest') {
+        setState({ bubbleExpanded: false });
         navigate('meditation-suggest');
-      } else if (action === 'open-jegyzet') {
-        // Vágyak fülre navigálás
+      } else if (sa === 'open-jegyzet') {
+        setState({ bubbleExpanded: false });
         currentTab = 'vagyak';
         navigate('journal');
       }
@@ -3175,11 +3425,25 @@ document.addEventListener('click', e => {
   if (newTheme === state.themePref) return;
   setState({ themePref: newTheme });
   applyTheme(newTheme);
-  // pirulák frissítése
   app.querySelectorAll('[data-theme-pick]').forEach(b => {
     b.classList.toggle('is-active', b.dataset.themePick === newTheme);
   });
   toast(`téma: ${newTheme === 'auto' ? 'automatikus' : newTheme === 'light' ? 'világos' : 'sötét'}`);
+});
+
+// ─── Hangjelzés-pirula tap (settings) ──────────────────────────────────
+
+document.addEventListener('click', e => {
+  const btn = e.target.closest('[data-sound-pick]');
+  if (!btn) return;
+  const newVal = btn.dataset.soundPick === 'on';
+  if (newVal === state.soundEnabled) return;
+  setState({ soundEnabled: newVal });
+  app.querySelectorAll('[data-sound-pick]').forEach(b => {
+    b.classList.toggle('is-active', b.dataset.soundPick === (newVal ? 'on' : 'off'));
+  });
+  toast(`hangjelzés: ${newVal ? 'be' : 'ki'}`);
+  if (newVal) playPing();  // azonnali visszaigazolás
 });
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -3187,6 +3451,7 @@ document.addEventListener('click', e => {
 // ═══════════════════════════════════════════════════════════════════════
 
 init();
+scheduleMidnightRotation();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
