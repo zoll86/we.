@@ -1961,26 +1961,32 @@ function renderCsillamBubble() {
     return;
   }
 
-  // KOMPAKT MÓD — utolsó üzenet
-  const b = state.activeBubble;
-  if (!b) {
-    bubble.hidden = true;
-    return;
-  }
+  // KOMPAKT MÓD — utolsó üzenet (activeBubble vagy history fallback)
+  let b = state.activeBubble;
+
+  // ha nincs aktív vagy lejárt, és van history → az utolsó history-elem
   const now = Date.now();
-  if (b.expiresAt && now > b.expiresAt) {
-    setState({ activeBubble: null });
-    bubble.hidden = true;
-    return;
-  }
-  if (now < b.deliveryAt) {
-    bubble.hidden = true;
-    return;
+  const expired = b && b.expiresAt && now > b.expiresAt;
+  const future = b && now < b.deliveryAt;
+  if (!b || expired || future) {
+    if (state.bubbleHistory && state.bubbleHistory.length > 0) {
+      const last = state.bubbleHistory[state.bubbleHistory.length - 1];
+      b = {
+        id: last.id,
+        authorId: last.author_id,
+        type: last.type,
+        payload: last.payload || {},
+        deliveryAt: new Date(last.delivery_at).getTime(),
+        expiresAt: null,
+      };
+    } else {
+      bubble.hidden = true;
+      return;
+    }
   }
 
-  // construáljuk a szöveget. A buborék kompakt módban is mutatja: ki küldte | szöveg
-  // Az `activeBubble` payload-ja lehet hogy nem tartalmaz author_id-t (helyi optimista).
-  // De van b.authorId (ha van), egyébként önmagunké
+  bubble.hidden = false;
+
   const fakeMsg = {
     author_id: b.authorId || state.myMemberId,
     type: b.type,
